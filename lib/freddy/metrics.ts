@@ -377,7 +377,7 @@ interface FreddyMcpClient {
    * valores escalares do texto devolvido — não há JSON estruturado nenhum
    * a extrair. Opcional porque a maioria dos mappers não precisa disto.
    */
-  queryRawText?(args: { metrics: string[]; start?: string; end?: string }): Promise<string>;
+  queryRawText?(args: { metrics: string[]; days?: number; start?: string; end?: string }): Promise<string>;
 }
 
 export class FreddyDataService {
