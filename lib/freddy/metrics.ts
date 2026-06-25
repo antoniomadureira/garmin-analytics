@@ -630,6 +630,40 @@ export class FreddyDataService {
    * maxHeartRateInBeatsPerMinute NÃO têm raw (confirmado em list_metrics) —
    * mesma técnica de extração escalar por data usada no running summary.
    */
+  /** [Certo] daily_steps e uds_dailyStepGoal partilham o mesmo registo diário (confirmado). */
+  async getStepsWeekly(days = 7): Promise<{
+    todaySteps: number | null;
+    todayGoal: number | null;
+    avgSteps7d: number | null;
+    daily: { date: string; steps: number; goal: number | null }[];
+  }> {
+    if (!this.client.queryRawText) {
+      throw new Error("Este client não implementa queryRawText — necessário para passos semanais.");
+    }
+    const text = await this.client.queryRawText({
+      metrics: [DailyAggregateMetrics.steps, "uds_dailyStepGoal"],
+      days,
+    });
+    const stepsByDate = extractValuesByDate(text, DailyAggregateMetrics.steps);
+    const goalByDate = extractValuesByDate(text, "uds_dailyStepGoal");
+
+    const dates = [...stepsByDate.keys()].sort();
+    const daily = dates.map((date) => ({
+      date,
+      steps: stepsByDate.get(date)?.[0] ?? 0,
+      goal: goalByDate.get(date)?.[0] ?? null,
+    }));
+    const lastDate = dates[dates.length - 1];
+    const allSteps = daily.map((d) => d.steps);
+
+    return {
+      todaySteps: lastDate ? stepsByDate.get(lastDate)?.[0] ?? null : null,
+      todayGoal: lastDate ? goalByDate.get(lastDate)?.[0] ?? null : null,
+      avgSteps7d: allSteps.length ? Math.round(allSteps.reduce((a, b) => a + b, 0) / allSteps.length) : null,
+      daily,
+    };
+  }
+
   async getHeartRateWeekly(days = 7): Promise<{
     restingToday: number | null;
     maxThisWeek: number | null;
