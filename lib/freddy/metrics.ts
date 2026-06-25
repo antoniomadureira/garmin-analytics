@@ -522,6 +522,47 @@ export class FreddyDataService {
    * vez de errados — não há fallback para summarizedActivity_* aqui
    * porque um resumo semanal não precisa da cobertura histórica.
    */
+  /**
+   * [Certo] daily_restingHeartRateInBeatsPerMinute/averageHeartRateInBeatsPerMinute/
+   * maxHeartRateInBeatsPerMinute NÃO têm raw (confirmado em list_metrics) —
+   * mesma técnica de extração escalar por data usada no running summary.
+   */
+  async getHeartRateWeekly(days = 7): Promise<{
+    restingToday: number | null;
+    maxThisWeek: number | null;
+    minToday: number | null;
+    daily: { date: string; resting: number | null; max: number | null }[];
+  }> {
+    if (!this.client.queryRawText) {
+      throw new Error("Este client não implementa queryRawText — necessário para FC semanal.");
+    }
+    const text = await this.client.queryRawText({
+      metrics: [DailyAggregateMetrics.restingHr, DailyAggregateMetrics.maxHr, DailyAggregateMetrics.minHr],
+      days,
+    });
+    const restingByDate = extractValuesByDate(text, DailyAggregateMetrics.restingHr);
+    const maxByDate = extractValuesByDate(text, DailyAggregateMetrics.maxHr);
+    const minByDate = extractValuesByDate(text, DailyAggregateMetrics.minHr);
+
+    const allDates = [...new Set([...restingByDate.keys(), ...maxByDate.keys()])].sort();
+    const daily = allDates.map((date) => ({
+      date,
+      resting: restingByDate.get(date)?.[0] ?? null,
+      max: maxByDate.get(date)?.[0] ?? null,
+    }));
+
+    const lastDate = allDates[allDates.length - 1];
+    const allMaxValues = [...maxByDate.values()].flat();
+    const allMinValues = [...minByDate.values()].flat();
+
+    return {
+      restingToday: lastDate ? restingByDate.get(lastDate)?.[0] ?? null : null,
+      maxThisWeek: allMaxValues.length ? Math.max(...allMaxValues) : null,
+      minToday: lastDate ? minByDate.get(lastDate)?.[0] ?? (allMinValues.length ? Math.min(...allMinValues) : null) : null,
+      daily,
+    };
+  }
+
   async getWeeklyRunningSummary(days = 7): Promise<{
     totalDistanceKm: number;
     totalDurationSec: number;

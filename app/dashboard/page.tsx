@@ -17,7 +17,7 @@ import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 // rebentar ou fingir sucesso.
 // =============================================================================
 
-async function loadReadiness(): Promise<{ data: ReadinessCardData; isReal: boolean; error?: string }> {
+async function loadReadiness(service: Awaited<ReturnType<typeof getFreddyDataService>> | null, connectError?: string): Promise<{ data: ReadinessCardData; isReal: boolean; error?: string }> {
   const mock: ReadinessCardData = {
     score: 78,
     level: "Bom",
@@ -26,8 +26,8 @@ async function loadReadiness(): Promise<{ data: ReadinessCardData; isReal: boole
     hrvStatusLabel: "Equilibrado",
     acuteLoad: 312,
   };
+  if (!service) return { data: mock, isReal: false, error: connectError };
   try {
-    const service = await getFreddyDataService();
     const readinessEntries = await service.getTrainingReadiness(7);
     const latest = readinessEntries.reduce(
       (best, cur) => (!best || cur.date > best.date ? cur : best),
@@ -50,7 +50,7 @@ async function loadReadiness(): Promise<{ data: ReadinessCardData; isReal: boole
   }
 }
 
-async function loadTrainingLoad(): Promise<{ data: TrainingLoadCardData; isReal: boolean; error?: string }> {
+async function loadTrainingLoad(service: Awaited<ReturnType<typeof getFreddyDataService>> | null, connectError?: string): Promise<{ data: TrainingLoadCardData; isReal: boolean; error?: string }> {
   const mock: TrainingLoadCardData = {
     vo2Max: 54,
     trainingStatusLabel: "Productive",
@@ -61,8 +61,8 @@ async function loadTrainingLoad(): Promise<{ data: TrainingLoadCardData; isReal:
       chronic: 260 + i * 8,
     })),
   };
+  if (!service) return { data: mock, isReal: false, error: connectError };
   try {
-    const service = await getFreddyDataService();
     const loadEntries = await service.getTrainingLoadSummary(7);
     const vo2Entries = await service.getVo2MaxSummary(7);
     const load = loadEntries.reduce((best, cur) => (!best || cur.date > best.date ? cur : best), loadEntries[0]);
@@ -93,7 +93,7 @@ function formatHoursMinutes(totalSeconds: number): string {
   return `${h}h ${m}m`;
 }
 
-async function loadRunningSummary(): Promise<{ data: RunningSummaryCardData; isReal: boolean; error?: string }> {
+async function loadRunningSummary(service: Awaited<ReturnType<typeof getFreddyDataService>> | null, connectError?: string): Promise<{ data: RunningSummaryCardData; isReal: boolean; error?: string }> {
   const mock: RunningSummaryCardData = {
     weeklyDistanceKm: 42.3,
     weeklyTimeFormatted: "4h 12m",
@@ -108,8 +108,8 @@ async function loadRunningSummary(): Promise<{ data: RunningSummaryCardData; isR
       { day: "Dom", km: 4.3 },
     ],
   };
+  if (!service) return { data: mock, isReal: false, error: connectError };
   try {
-    const service = await getFreddyDataService();
     const summary = await service.getWeeklyRunningSummary(7);
     return {
       data: {
@@ -125,7 +125,7 @@ async function loadRunningSummary(): Promise<{ data: RunningSummaryCardData; isR
   }
 }
 
-async function loadRecoveryInsights(): Promise<{ data: RecoveryCardData; isReal: boolean; error?: string }> {
+async function loadRecoveryInsights(service: Awaited<ReturnType<typeof getFreddyDataService>> | null, connectError?: string): Promise<{ data: RecoveryCardData; isReal: boolean; error?: string }> {
   const mock: RecoveryCardData = {
     recoveryTimeHours: 18,
     bodyBatteryMax: 92,
@@ -133,8 +133,8 @@ async function loadRecoveryInsights(): Promise<{ data: RecoveryCardData; isReal:
     avgStress: 28,
     recommendation: "Stress controlado e recuperação dentro do esperado. Sem necessidade de dia extra de descanso.",
   };
+  if (!service) return { data: mock, isReal: false, error: connectError };
   try {
-    const service = await getFreddyDataService();
     const [recoveryEntries, readinessEntries] = await Promise.all([
       service.getRecoverySummary(7),
       service.getTrainingReadiness(7),
@@ -180,7 +180,7 @@ function buildRadarData(vo2Max: number, readinessScore: number, weeklyKm: number
   ];
 }
 
-async function loadYoyKpis(): Promise<{ data: YoyKpi[]; isReal: boolean; error?: string }> {
+async function loadYoyKpis(service: Awaited<ReturnType<typeof getFreddyDataService>> | null, connectError?: string): Promise<{ data: YoyKpi[]; isReal: boolean; error?: string }> {
   const mock: YoyKpi[] = [
     { label: "Corridas", current: 105, previous: 87, unit: "" },
     { label: "Distância", current: 1566, previous: 1317, unit: "km" },
@@ -188,8 +188,8 @@ async function loadYoyKpis(): Promise<{ data: YoyKpi[]; isReal: boolean; error?:
     { label: "Elevação", current: 13323, previous: 10840, unit: "m" },
     { label: "FC Média", current: 137, previous: 140, unit: "bpm" },
   ];
+  if (!service) return { data: mock, isReal: false, error: connectError };
   try {
-    const service = await getFreddyDataService();
     const today = new Date();
     const yearStart = `${today.getFullYear()}-01-01`;
     const yearEnd = today.toISOString().slice(0, 10);
@@ -215,12 +215,26 @@ async function loadYoyKpis(): Promise<{ data: YoyKpi[]; isReal: boolean; error?:
 }
 
 export default async function DashboardPage() {
+  // [Certo] Uma única ligação MCP para a página toda — a versão anterior
+  // chamava getFreddyDataService() 5 vezes em separado (uma por loader),
+  // cada uma com handshake completo, o que disparou rate limiting real
+  // no servidor Freddy quando outras páginas (Sono, FC) também passaram
+  // a ligar-se. Esta abordagem evita isso: connect() corre uma vez,
+  // partilhado por todos os loaders em paralelo.
+  let service: Awaited<ReturnType<typeof getFreddyDataService>> | null = null;
+  let connectError: string | undefined;
+  try {
+    service = await getFreddyDataService();
+  } catch (err) {
+    connectError = String(err);
+  }
+
   const [readinessResult, trainingLoadResult, yoyResult, runningResult, recoveryResult] = await Promise.all([
-    loadReadiness(),
-    loadTrainingLoad(),
-    loadYoyKpis(),
-    loadRunningSummary(),
-    loadRecoveryInsights(),
+    loadReadiness(service, connectError),
+    loadTrainingLoad(service, connectError),
+    loadYoyKpis(service, connectError),
+    loadRunningSummary(service, connectError),
+    loadRecoveryInsights(service, connectError),
   ]);
 
   const radarData = buildRadarData(

@@ -153,7 +153,25 @@ export async function pollDeviceFlow(): Promise<PollResult> {
   return { status: "error", error: err };
 }
 
-/** Devolve um access_token válido, renovando-o se estiver perto de expirar. */
+/**
+ * [Certo] Confirmado em produção (Vercel): chamar getValidAccessToken() em
+ * paralelo (ex: Promise.all de 5 loaders no dashboard) faz com que várias
+ * chamadas leiam o MESMO refresh_token expirado e tentem renová-lo ao
+ * mesmo tempo. Refresh tokens OAuth são normalmente de uso único — só a
+ * primeira chamada a chegar ao servidor consegue; as restantes recebem
+ * `invalid_grant`/400, porque o token já foi consumido. Este lock garante
+ * que, dentro do mesmo processo Node (a mesma invocação serverless), só
+ * existe UM refresh em curso de cada vez — as chamadas seguintes esperam
+ * pela mesma promise em vez de disparar pedidos próprios.
+ * [Provável] Isto resolve a concorrência DENTRO de uma invocação; não
+ * protege contra duas invocações serverless diferentes a renovar ao
+ * mesmo tempo (cada uma tem a sua própria variável em memória). Para
+ * esse caso seria preciso um lock distribuído no Upstash — não
+ * implementado ainda porque o caso mais comum (5 loaders na mesma
+ * página) já fica resolvido com isto.
+ */
+let refreshInFlight: Promise<string> | null = null;
+
 export async function getValidAccessToken(): Promise<string> {
   const tokens = await kv.get<TokenSet>(TOKENS_KV_KEY);
   if (!tokens) {
@@ -165,6 +183,17 @@ export async function getValidAccessToken(): Promise<string> {
     return tokens.access_token;
   }
 
+  if (refreshInFlight) {
+    return refreshInFlight;
+  }
+
+  refreshInFlight = doRefresh(tokens).finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
+async function doRefresh(tokens: TokenSet): Promise<string> {
   // [Provável] grant_type "refresh_token" assumido por convenção — confirmar em produção.
   // client_secret incluído pela mesma razão que em pollDeviceFlow.
   const client = await getOrRegisterClient();
