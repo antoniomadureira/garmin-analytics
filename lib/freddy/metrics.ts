@@ -594,6 +594,108 @@ export class FreddyDataService {
     };
   }
 
+  /**
+   * [Certo] Reutiliza a mesma combinação de fontes validada no YoY
+   * (activity_* recente + summarizedActivity_* histórico, elevação /100).
+   * Agrega por mês (YYYY-MM) em vez de por ano completo.
+   */
+  async getMonthlyTrend(monthsBack = 6): Promise<{ month: string; distanceKm: number; durationH: number; caloriesKcal: number }[]> {
+    if (!this.client.queryRawText) {
+      throw new Error("Este client não implementa queryRawText — necessário para a tendência mensal.");
+    }
+    const end = new Date();
+    const start = new Date(end);
+    start.setMonth(start.getMonth() - monthsBack);
+    const startStr = start.toISOString().slice(0, 10);
+    const endStr = end.toISOString().slice(0, 10);
+
+    const [summarizedText, recentText] = await Promise.all([
+      this.client.queryRawText({
+        metrics: [SummarizedActivityMetrics.distanceM, SummarizedActivityMetrics.durationSec, SummarizedActivityMetrics.calories],
+        start: startStr,
+        end: endStr,
+      }),
+      this.client.queryRawText({
+        metrics: [RunActivityMetrics.distanceM, RunActivityMetrics.durationSec, RunActivityMetrics.activeKcal],
+        start: startStr,
+        end: endStr,
+      }),
+    ]);
+
+    const recentDist = extractValuesByDate(recentText, RunActivityMetrics.distanceM);
+    const recentDur = extractValuesByDate(recentText, RunActivityMetrics.durationSec);
+    const recentKcal = extractValuesByDate(recentText, RunActivityMetrics.activeKcal);
+    const summDist = extractValuesByDate(summarizedText, SummarizedActivityMetrics.distanceM);
+    const summDur = extractValuesByDate(summarizedText, SummarizedActivityMetrics.durationSec);
+    const summKcal = extractValuesByDate(summarizedText, SummarizedActivityMetrics.calories);
+
+    const recentDates = new Set(recentDist.keys());
+    const buckets = new Map<string, { km: number; sec: number; kcal: number }>();
+
+    function addToBucket(date: string, km: number, sec: number, kcal: number) {
+      const month = date.slice(0, 7);
+      const b = buckets.get(month) ?? { km: 0, sec: 0, kcal: 0 };
+      b.km += km;
+      b.sec += sec;
+      b.kcal += kcal;
+      buckets.set(month, b);
+    }
+
+    for (const [date, vals] of recentDist) addToBucket(date, sum(vals) / 1000, sum(recentDur.get(date) ?? []), sum(recentKcal.get(date) ?? []));
+    for (const [date, vals] of summDist) {
+      if (recentDates.has(date)) continue;
+      addToBucket(date, sum(vals) / 1000, sum(summDur.get(date) ?? []), sum(summKcal.get(date) ?? []));
+    }
+
+    return [...buckets.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([month, b]) => ({
+        month,
+        distanceKm: roundTo(b.km, 1),
+        durationH: roundTo(b.sec / 3600, 1),
+        caloriesKcal: Math.round(b.kcal),
+      }));
+  }
+
+  /**
+   * [Provável] Zip por posição entre arrays extraídos independentemente
+   * por métrica, para a mesma data — funciona porque cada métrica é
+   * varrida pela mesma ordem de leitura do texto, preservando a ordem
+   * relativa das atividades desse dia (não testado formalmente, mas é a
+   * única leitura coerente com o texto real observado).
+   */
+  async getRecentActivities(days = 30): Promise<
+    { date: string; distanceKm: number; durationSec: number; paceMinPerKm: number; elevationGainM: number | null }[]
+  > {
+    if (!this.client.queryRawText) {
+      throw new Error("Este client não implementa queryRawText — necessário para a lista de atividades.");
+    }
+    const text = await this.client.queryRawText({
+      metrics: [RunActivityMetrics.distanceM, RunActivityMetrics.durationSec, RunActivityMetrics.elevationGainM],
+      days,
+    });
+    const distByDate = extractValuesByDate(text, RunActivityMetrics.distanceM);
+    const durByDate = extractValuesByDate(text, RunActivityMetrics.durationSec);
+    const elevByDate = extractValuesByDate(text, RunActivityMetrics.elevationGainM);
+
+    const out: { date: string; distanceKm: number; durationSec: number; paceMinPerKm: number; elevationGainM: number | null }[] = [];
+    for (const [date, distances] of distByDate) {
+      const durations = durByDate.get(date) ?? [];
+      const elevations = elevByDate.get(date) ?? [];
+      distances.forEach((distM, i) => {
+        const durSec = durations[i] ?? 0;
+        out.push({
+          date,
+          distanceKm: roundTo(distM / 1000, 2),
+          durationSec: durSec,
+          paceMinPerKm: distM > 0 ? roundTo(durSec / 60 / (distM / 1000), 2) : 0,
+          elevationGainM: elevations[i] ?? null,
+        });
+      });
+    }
+    return out.sort((a, b) => (a.date < b.date ? 1 : -1));
+  }
+
   async getYearOverYearKpis(yearStart: string, yearEnd: string, prevYearStart: string, prevYearEnd: string): Promise<YearOverYearKpi[]> {
     if (!this.client.queryRawText) {
       throw new Error("Este client não implementa queryRawText — necessário para a comparação homóloga.");

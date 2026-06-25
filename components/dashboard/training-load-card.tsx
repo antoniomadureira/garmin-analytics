@@ -64,9 +64,9 @@ export function TrainingLoadCard({ data }: { data: TrainingLoadCardData }) {
       </div>
       <div className="mt-4 h-32">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data.history} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+          <LineChart data={data.history} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} width={28} />
+            <YAxis tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} width={36} />
             <Tooltip
               contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", fontSize: 12 }}
               labelStyle={{ color: "#cbd5e1" }}
