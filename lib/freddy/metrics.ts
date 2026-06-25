@@ -708,12 +708,23 @@ export class FreddyDataService {
    * Range fixo a partir de 1 de janeiro do ano atual até hoje (YTD) —
    * não é "últimos N meses" rolantes.
    */
-  async getMonthlyTrend(): Promise<{ month: string; distanceKm: number; durationH: number; caloriesKcal: number }[]> {
+  /**
+   * [Certo] Substitui o antigo getMonthlyTrend — devolve dados DIÁRIOS
+   * para o último ano (activity_* recente + summarizedActivity_*
+   * histórico, calorias do summarizedActivity convertidas de kJ para
+   * kcal ÷4.184, elevação seria /100 mas não é usada aqui). A agregação
+   * por período (7D/1M/3M/6M/YTD/1Y) faz-se no cliente a partir destes
+   * dados diários, evitando uma chamada ao servidor por cada clique no
+   * seletor de período.
+   */
+  async getDailyTrend(): Promise<{ date: string; distanceKm: number; durationH: number; caloriesKcal: number }[]> {
     if (!this.client.queryRawText) {
-      throw new Error("Este client não implementa queryRawText — necessário para a tendência mensal.");
+      throw new Error("Este client não implementa queryRawText — necessário para a tendência diária.");
     }
     const end = new Date();
-    const startStr = `${end.getFullYear()}-01-01`;
+    const start = new Date(end);
+    start.setFullYear(start.getFullYear() - 1);
+    const startStr = start.toISOString().slice(0, 10);
     const endStr = end.toISOString().slice(0, 10);
 
     const [summarizedText, recentText] = await Promise.all([
@@ -737,32 +748,19 @@ export class FreddyDataService {
     const summKcal = extractValuesByDate(summarizedText, SummarizedActivityMetrics.calories);
 
     const recentDates = new Set(recentDist.keys());
-    const buckets = new Map<string, { km: number; sec: number; kcal: number }>();
+    const byDate = new Map<string, { km: number; sec: number; kcal: number }>();
 
-    function addToBucket(date: string, km: number, sec: number, kcal: number) {
-      const month = date.slice(0, 7);
-      const b = buckets.get(month) ?? { km: 0, sec: 0, kcal: 0 };
-      b.km += km;
-      b.sec += sec;
-      b.kcal += kcal;
-      buckets.set(month, b);
+    for (const [date, vals] of recentDist) {
+      byDate.set(date, { km: sum(vals) / 1000, sec: sum(recentDur.get(date) ?? []), kcal: sum(recentKcal.get(date) ?? []) });
     }
-
-    for (const [date, vals] of recentDist) addToBucket(date, sum(vals) / 1000, sum(recentDur.get(date) ?? []), sum(recentKcal.get(date) ?? []));
     for (const [date, vals] of summDist) {
       if (recentDates.has(date)) continue;
-      const kcalKj = sum(summKcal.get(date) ?? []);
-      addToBucket(date, sum(vals) / 1000, sum(summDur.get(date) ?? []), kcalKj / 4.184); // kJ -> kcal
+      byDate.set(date, { km: sum(vals) / 1000, sec: sum(summDur.get(date) ?? []), kcal: sum(summKcal.get(date) ?? []) / 4.184 });
     }
 
-    return [...buckets.entries()]
+    return [...byDate.entries()]
       .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([month, b]) => ({
-        month,
-        distanceKm: roundTo(b.km, 1),
-        durationH: roundTo(b.sec / 3600, 1),
-        caloriesKcal: Math.round(b.kcal),
-      }));
+      .map(([date, b]) => ({ date, distanceKm: roundTo(b.km, 2), durationH: roundTo(b.sec / 3600, 2), caloriesKcal: Math.round(b.kcal) }));
   }
 
   /**
@@ -1112,7 +1110,7 @@ function mapToRunActivityDetail(raw: Record<string, unknown>): RunActivitySummar
     },
   };
 }
-const YOY_DATE_HEADER_RE = /^(\d{4}-\d{2}-\d{2}):\s*$/;
+const YOY_DATE_HEADER_RE = /^(\d{4}-\d{2}-\d{2})(?:T\d{2}:\d{2})?:\s*$/;
 
 /** Extrai valores escalares de uma métrica, agrupados por data (cabeçalho "YYYY-MM-DD:"). */
 function extractValuesByDate(text: string, metricName: string): Map<string, number[]> {

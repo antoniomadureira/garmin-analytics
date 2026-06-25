@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { StatTile } from "@/components/ui/stat-tile";
 import { ActivitySeriesChart, type DetailSeriesPoint } from "@/components/dashboard/activity-series-chart";
-import { Gauge, Clock, Zap, Heart, TrendingUp, Mountain, Flame } from "lucide-react";
+import { Gauge, Clock, Zap, Heart, TrendingUp, Mountain, Flame, Footprints } from "lucide-react";
 
 const RouteMap = dynamic(() => import("@/components/dashboard/route-map").then((m) => m.RouteMap), {
   ssr: false,
@@ -58,7 +58,23 @@ export function ActivityDetailPanel({ date }: { date: string }) {
     return <p className="px-2 py-3 text-xs text-amber-500">Não foi possível carregar o detalhe: {error.slice(0, 120)}</p>;
   }
   if (!data) {
-    return <div className="h-32 animate-pulse rounded-xl bg-slate-900/50" />;
+    return (
+      <div className="flex h-40 flex-col items-center justify-center gap-3">
+        <div
+          className="flex h-14 w-14 items-center justify-center rounded-full border border-slate-800 bg-slate-900"
+          style={{ animation: "run-pulse 1s ease-in-out infinite" }}
+        >
+          <Footprints size={26} className="text-orange-400" />
+        </div>
+        <span className="text-xs text-slate-500">A carregar a corrida…</span>
+        <style>{`
+          @keyframes run-pulse {
+            0%, 100% { transform: scale(1); opacity: 0.7; }
+            50% { transform: scale(1.08); opacity: 1; }
+          }
+        `}</style>
+      </div>
+    );
   }
 
   return (

@@ -3,7 +3,7 @@ import "./globals.css";
 import "leaflet/dist/leaflet.css";
 
 export const metadata: Metadata = {
-  title: "freddy running intelligence",
+  title: "Garmin Analytics",
   description: "Plataforma pessoal de análise de performance desportiva",
 };
 

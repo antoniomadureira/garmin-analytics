@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { Card, CardTitle } from "@/components/ui/card";
-import { ChevronDown } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { ActivityDetailPanel } from "@/components/dashboard/activity-detail-panel";
+import { BottomSheet } from "@/components/ui/bottom-sheet";
 
 export interface RecentActivity {
   date: string;
@@ -29,39 +30,41 @@ function formatDatePt(iso: string): string {
 }
 
 export function RecentActivitiesList({ activities }: { activities: RecentActivity[] }) {
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const [selected, setSelected] = useState<RecentActivity | null>(null);
 
   return (
     <Card>
       <CardTitle>Atividades Recentes</CardTitle>
       <div className="divide-y divide-slate-800">
         {activities.map((a, i) => (
-          <div key={`${a.date}-${i}`}>
-            <button
-              onClick={() => setExpanded(expanded === i ? null : i)}
-              className="flex w-full items-center justify-between py-3 text-left transition hover:bg-slate-800/30"
-            >
-              <div>
-                <div className="text-sm font-medium text-slate-200">Corrida · {formatDatePt(a.date)}</div>
-                <div className="text-xs text-slate-500">{a.distanceKm.toLocaleString("pt-PT")} km</div>
+          <button
+            key={`${a.date}-${i}`}
+            onClick={() => setSelected(a)}
+            className="flex w-full items-center justify-between py-3 text-left transition hover:bg-slate-800/30"
+          >
+            <div>
+              <div className="text-sm font-medium text-slate-200">Corrida · {formatDatePt(a.date)}</div>
+              <div className="text-xs text-slate-500">{a.distanceKm.toLocaleString("pt-PT")} km</div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="hidden text-right sm:block">
+                <div className="text-xs text-slate-400">{formatHm(a.durationSec)}</div>
+                <div className="text-xs text-slate-500">{formatPace(a.paceMinPerKm)}</div>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="hidden text-right sm:block">
-                  <div className="text-xs text-slate-400">{formatHm(a.durationSec)}</div>
-                  <div className="text-xs text-slate-500">{formatPace(a.paceMinPerKm)}</div>
-                </div>
-                <ChevronDown
-                  size={16}
-                  className={`text-slate-500 transition-transform ${expanded === i ? "rotate-180" : ""}`}
-                />
-              </div>
-            </button>
-
-            {expanded === i && <ActivityDetailPanel date={a.date} />}
-          </div>
+              <ChevronRight size={16} className="text-slate-500" />
+            </div>
+          </button>
         ))}
         {activities.length === 0 && <p className="py-4 text-sm text-slate-500">Sem atividades no período.</p>}
       </div>
+
+      <BottomSheet
+        open={selected !== null}
+        onClose={() => setSelected(null)}
+        title={selected ? `Corrida · ${formatDatePt(selected.date)}` : ""}
+      >
+        {selected && <ActivityDetailPanel date={selected.date} />}
+      </BottomSheet>
     </Card>
   );
 }

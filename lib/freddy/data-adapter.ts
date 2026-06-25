@@ -24,7 +24,7 @@ import { FreddyDataService } from "@/lib/freddy/metrics";
  * não implementado ainda porque não há esse caso de uso ainda.
  */
 
-const DATE_HEADER_RE = /^(\d{4}-\d{2}-\d{2}):\s*$/;
+const DATE_HEADER_RE = /^(\d{4}-\d{2}-\d{2})(?:T\d{2}:\d{2})?:\s*$/;
 
 function extractBalancedJson(text: string, startIndex: number): { json: string; endIndex: number } | null {
   if (text[startIndex] !== "{") return null;

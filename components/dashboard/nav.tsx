@@ -20,7 +20,7 @@ export function DashboardNav() {
     <header className="sticky top-0 z-20 border-b border-slate-800 bg-slate-950/80 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
         <div className="text-sm font-semibold tracking-tight text-slate-100">
-          freddy <span className="text-emerald-400">running</span>
+          Garmin <span style={{ color: "#007cc3" }}>Analytics</span>
         </div>
 
         {/* Desktop: barra horizontal */}

@@ -58,7 +58,10 @@ export function ActivitySeriesChart({ series }: { series: DetailSeriesPoint[] })
               contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", fontSize: 12 }}
               labelStyle={{ color: "#cbd5e1" }}
               labelFormatter={(v: number) => `${v.toFixed(2)} km`}
-              formatter={(value: number) => [`${value} ${active.unit}`, active.label]}
+              formatter={(value: number) => {
+                const decimals = tab === "pace" ? 2 : 0;
+                return [`${value.toFixed(decimals)} ${active.unit}`, active.label];
+              }}
             />
             <Line type="monotone" dataKey={key} stroke={active.color} strokeWidth={1.5} dot={false} connectNulls />
           </LineChart>
