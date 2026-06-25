@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { ChevronDown } from "lucide-react";
+import { ActivityDetailPanel } from "@/components/dashboard/activity-detail-panel";
 
 export interface RecentActivity {
   date: string;
@@ -56,28 +57,7 @@ export function RecentActivitiesList({ activities }: { activities: RecentActivit
               </div>
             </button>
 
-            {expanded === i && (
-              <div className="grid grid-cols-2 gap-3 bg-slate-800/20 px-2 py-3 sm:grid-cols-4">
-                <div>
-                  <div className="text-[11px] text-slate-500">Distância</div>
-                  <div className="text-sm font-medium text-slate-200">{a.distanceKm.toLocaleString("pt-PT")} km</div>
-                </div>
-                <div>
-                  <div className="text-[11px] text-slate-500">Tempo</div>
-                  <div className="text-sm font-medium text-slate-200">{formatHm(a.durationSec)}</div>
-                </div>
-                <div>
-                  <div className="text-[11px] text-slate-500">Pace</div>
-                  <div className="text-sm font-medium text-slate-200">{formatPace(a.paceMinPerKm)}</div>
-                </div>
-                <div>
-                  <div className="text-[11px] text-slate-500">Elevação</div>
-                  <div className="text-sm font-medium text-slate-200">
-                    {a.elevationGainM !== null ? `${Math.round(a.elevationGainM)} m` : "—"}
-                  </div>
-                </div>
-              </div>
-            )}
+            {expanded === i && <ActivityDetailPanel date={a.date} />}
           </div>
         ))}
         {activities.length === 0 && <p className="py-4 text-sm text-slate-500">Sem atividades no período.</p>}

@@ -54,7 +54,7 @@ export function MonthlyTrendChart({ data }: { data: MonthlyTrendPoint[] }) {
         ))}
       </div>
 
-      <div className="mb-1 text-xs text-slate-500">{active.label} Total</div>
+      <div className="mb-1 text-xs text-slate-500">{active.label} Total · {new Date().getFullYear()} (Jan–hoje)</div>
       <div className="mb-4 text-3xl font-bold text-slate-100">
         {total.toLocaleString("pt-PT", { maximumFractionDigits: 1 })}
         <span className="ml-1 text-sm font-normal text-slate-500">{active.unit}</span>
@@ -80,19 +80,6 @@ export function MonthlyTrendChart({ data }: { data: MonthlyTrendPoint[] }) {
         </ResponsiveContainer>
       </div>
 
-      <div className="mt-3 flex justify-center gap-2 text-xs">
-        {["7D", "1M", "3M", "6M", "YTD", "1Y"].map((r) => (
-          <span
-            key={r}
-            className={`rounded-full px-3 py-1 font-medium ${
-              r === "6M" ? "bg-slate-800 text-slate-100" : "cursor-not-allowed text-slate-600"
-            }`}
-            title={r === "6M" ? undefined : "Em breve — só os últimos 6 meses estão implementados"}
-          >
-            {r}
-          </span>
-        ))}
-      </div>
     </Card>
   );
 }

@@ -471,6 +471,109 @@ export class FreddyDataService {
   }
 
   /**
+   * [Certo] Implementação nova e isolada (não reaproveita
+   * getRunActivityDetail/mapToRunActivityDetail acima, que ficaram
+   * desalinhados com o shape real devolvido por data-adapter.ts —
+   * acediam a `raw["activityDetail_samples_raw"]` quando na realidade
+   * `raw[date]` já É o objeto de samples. Marcado como conhecido, não
+   * corrigido aqui para não alargar o escopo desta funcionalidade nova).
+   *
+   * Faz 2 chamadas separadas de propósito:
+   *   1. métricas escalares (sem raw) — simples, sem ambiguidade.
+   *   2. SÓ activityDetail_samples com includeRaw — isola o único raw
+   *      real desta atividade, sem misturar com outros blocos.
+   * [Provável] Se houver mais de uma atividade no mesmo dia, esta função
+   * só devolve a primeira (limitação conhecida, não tratada aqui).
+   */
+  async getActivityDetailFull(date: string): Promise<{
+    date: string;
+    distanceKm: number;
+    durationSec: number;
+    paceMinPerKm: number;
+    avgHr: number | null;
+    maxHr: number | null;
+    elevationGainM: number | null;
+    caloriesKcal: number | null;
+    route: [number, number][]; // [lat, lng]
+    series: { distanceKm: number; hr: number | null; altitude: number | null; paceMinPerKm: number | null; cadence: number | null }[];
+  }> {
+    if (!this.client.queryRawText) {
+      throw new Error("Este client não implementa queryRawText.");
+    }
+    const scalarText = await this.client.queryRawText({
+      metrics: [
+        RunActivityMetrics.distanceM,
+        RunActivityMetrics.durationSec,
+        RunActivityMetrics.avgHr,
+        RunActivityMetrics.maxHr,
+        RunActivityMetrics.elevationGainM,
+        RunActivityMetrics.activeKcal,
+      ],
+      start: date,
+      end: date,
+    });
+    const distanceM = extractValuesByDate(scalarText, RunActivityMetrics.distanceM).get(date)?.[0] ?? 0;
+    const durationSec = extractValuesByDate(scalarText, RunActivityMetrics.durationSec).get(date)?.[0] ?? 0;
+    const avgHr = extractValuesByDate(scalarText, RunActivityMetrics.avgHr).get(date)?.[0] ?? null;
+    const maxHr = extractValuesByDate(scalarText, RunActivityMetrics.maxHr).get(date)?.[0] ?? null;
+    const elevationGainM = extractValuesByDate(scalarText, RunActivityMetrics.elevationGainM).get(date)?.[0] ?? null;
+    const caloriesKcal = extractValuesByDate(scalarText, RunActivityMetrics.activeKcal).get(date)?.[0] ?? null;
+
+    const samplesResult = await this.client.queryMetrics({
+      metrics: [RunActivityMetrics.samples],
+      start: date,
+      end: date,
+      includeRaw: true,
+    });
+    const samples = samplesResult[date] as ActivityDetailSamplesRaw | undefined;
+
+    const route: [number, number][] = [];
+    const series: { distanceKm: number; hr: number | null; altitude: number | null; paceMinPerKm: number | null; cadence: number | null }[] = [];
+
+    if (samples) {
+      const lat = samples.streams.latitude?.values ?? [];
+      const lng = samples.streams.longitude?.values ?? [];
+      for (let i = 0; i < Math.min(lat.length, lng.length); i++) {
+        if (lat[i] !== null && lng[i] !== null) route.push([lat[i] as number, lng[i] as number]);
+      }
+
+      const speed = samples.streams.speed?.values ?? [];
+      const hr = samples.streams.heart_rate?.values ?? [];
+      const altitude = samples.streams.altitude?.values ?? [];
+      const cadence = samples.streams.cadence?.values ?? [];
+      const ts = samples.timestamps ?? [];
+
+      let cumDistanceM = 0;
+      for (let i = 0; i < ts.length; i++) {
+        const dt = i === 0 ? 0 : ts[i] - ts[i - 1];
+        const v = speed[i] ?? 0;
+        cumDistanceM += (v ?? 0) * dt;
+        const paceMinPerKm = v && v > 0.3 ? roundTo(1000 / v / 60, 2) : null; // [Suposição] abaixo de 0.3 m/s considera-se parado, sem pace válido
+        series.push({
+          distanceKm: roundTo(cumDistanceM / 1000, 3),
+          hr: hr[i] ?? null,
+          altitude: altitude[i] ?? null,
+          paceMinPerKm,
+          cadence: cadence[i] ?? null,
+        });
+      }
+    }
+
+    return {
+      date,
+      distanceKm: roundTo(distanceM / 1000, 2),
+      durationSec,
+      paceMinPerKm: distanceM > 0 ? roundTo(durationSec / 60 / (distanceM / 1000), 2) : 0,
+      avgHr,
+      maxHr,
+      elevationGainM,
+      caloriesKcal,
+      route,
+      series,
+    };
+  }
+
+  /**
    * Detalhe de uma corrida específica. `includeRaw` só deve ser pedido aqui
    * (página de detalhe), nunca na listagem, por custo de payload (5-30KB/registo).
    */
@@ -597,16 +700,20 @@ export class FreddyDataService {
   /**
    * [Certo] Reutiliza a mesma combinação de fontes validada no YoY
    * (activity_* recente + summarizedActivity_* histórico, elevação /100).
-   * Agrega por mês (YYYY-MM) em vez de por ano completo.
+   * [Certo, confirmado por teste cruzado real] `summarizedActivity_calories`
+   * está em kJ, não kcal, apesar do nome — confirmado comparando 4
+   * atividades reais nas duas tabelas (razão consistente ≈4.184, que é
+   * exatamente a conversão kJ→kcal). `activity_activeKilocalories` está
+   * correto. Aplica-se a divisão só ao primeiro, nunca ao segundo.
+   * Range fixo a partir de 1 de janeiro do ano atual até hoje (YTD) —
+   * não é "últimos N meses" rolantes.
    */
-  async getMonthlyTrend(monthsBack = 6): Promise<{ month: string; distanceKm: number; durationH: number; caloriesKcal: number }[]> {
+  async getMonthlyTrend(): Promise<{ month: string; distanceKm: number; durationH: number; caloriesKcal: number }[]> {
     if (!this.client.queryRawText) {
       throw new Error("Este client não implementa queryRawText — necessário para a tendência mensal.");
     }
     const end = new Date();
-    const start = new Date(end);
-    start.setMonth(start.getMonth() - monthsBack);
-    const startStr = start.toISOString().slice(0, 10);
+    const startStr = `${end.getFullYear()}-01-01`;
     const endStr = end.toISOString().slice(0, 10);
 
     const [summarizedText, recentText] = await Promise.all([
@@ -644,7 +751,8 @@ export class FreddyDataService {
     for (const [date, vals] of recentDist) addToBucket(date, sum(vals) / 1000, sum(recentDur.get(date) ?? []), sum(recentKcal.get(date) ?? []));
     for (const [date, vals] of summDist) {
       if (recentDates.has(date)) continue;
-      addToBucket(date, sum(vals) / 1000, sum(summDur.get(date) ?? []), sum(summKcal.get(date) ?? []));
+      const kcalKj = sum(summKcal.get(date) ?? []);
+      addToBucket(date, sum(vals) / 1000, sum(summDur.get(date) ?? []), kcalKj / 4.184); // kJ -> kcal
     }
 
     return [...buckets.entries()]

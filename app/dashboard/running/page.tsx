@@ -25,7 +25,7 @@ async function loadRunningPage(): Promise<{
 
   try {
     const service = await getFreddyDataService();
-    const [monthly, activities] = await Promise.all([service.getMonthlyTrend(6), service.getRecentActivities(30)]);
+    const [monthly, activities] = await Promise.all([service.getMonthlyTrend(), service.getRecentActivities(30)]);
     if (monthly.length === 0) throw new Error("Sem dados mensais no período pedido.");
     return { monthly, activities, isReal: true };
   } catch (err) {
