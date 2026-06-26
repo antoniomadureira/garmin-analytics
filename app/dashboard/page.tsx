@@ -55,45 +55,26 @@ async function loadReadiness(service: Awaited<ReturnType<typeof getFreddyDataSer
           ? `${latestWellness.hrv}ms`
           : `${latestWellness.hrv}ms (${latestWellness.hrv >= hrvAvg ? "≥" : "<"} média 7d)`;
 
-    // [Certo] Score/nível/feedback agora derivados do TSB real (Intervals.icu,
-    // sempre fresco) em vez do trainingReadiness_score do Garmin, que tinha
-    // atraso de sincronização confirmado (até 5 dias). O Garmin continua a
-    // dar a Carga Aguda (acuteLoad), que não tem o mesmo problema de atraso.
-    const tsb = latestWellness?.tsb ?? null;
-    let score: number;
-    let level: string;
-    let feedbackShort: string;
-    if (tsb === null) {
-      // Sem TSB disponível — só nesse caso cai para o Training Readiness do Garmin, mesmo que antigo.
-      score = latest.score;
-      level = latest.level;
-      feedbackShort = latest.feedbackShort;
-    } else {
-      score = Math.max(0, Math.min(100, Math.round(50 + tsb * 1.5)));
-      if (tsb > 5) {
-        level = "Excelente";
-        feedbackShort = `Bem recuperado (TSB +${tsb}) — apto para treino de intensidade alta.`;
-      } else if (tsb >= -10) {
-        level = "Bom";
-        feedbackShort = `Carga equilibrada (TSB ${tsb}) — bom para manter ou subir intensidade com moderação.`;
-      } else if (tsb >= -20) {
-        level = "Moderado";
-        feedbackShort = `Fadiga acumulada (TSB ${tsb}) — considere treino leve ou recuperação ativa.`;
-      } else {
-        level = "Baixo";
-        feedbackShort = `Sobrecarga (TSB ${tsb}) — recomenda-se descanso ou treino muito leve.`;
-      }
-    }
+    // [Certo] Revertido — derivar o score a partir do TSB estava errado:
+    // são metodologias diferentes (TSB é carga de treino; Training Readiness
+    // do Garmin combina HRV, sono, carga e stress num algoritmo próprio).
+    // Confirmado por comparação real: TSB deu "50 Bom", Garmin real deu
+    // "13 Poor" no mesmo dia — não são a mesma coisa, não se deve aproximar
+    // uma pela outra. Volta a usar sempre o Training Readiness real do
+    // Garmin aqui, com o aviso de atraso quando aplicável. O TSB fica só
+    // no card "Estado de Treino", onde já estava correto.
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const staleDaysAgo = Math.round((new Date(todayStr).getTime() - new Date(latest.date).getTime()) / 86400000);
 
     return {
       data: {
-        score,
-        level,
-        feedbackShort,
+        score: latest.score,
+        level: latest.level,
+        feedbackShort: latest.feedbackShort,
         sleepScore: latestWellness?.sleepScore ?? latestSleep?.overallScore ?? mock.sleepScore,
         hrvStatusLabel: hrvLabel,
         acuteLoad: latest.acuteLoad ?? 0,
-        staleDaysAgo: null, // [Certo] já não relevante — score vem do TSB (Intervals.icu), sempre fresco
+        staleDaysAgo: staleDaysAgo > 0 ? staleDaysAgo : null,
       },
       isReal: true,
     };

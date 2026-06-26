@@ -12,12 +12,11 @@ export interface TrainingLoadPoint {
 
 export interface TrainingLoadCardData {
   vo2Max: number;
-  trainingStatusLabel: string;
+  trainingStatusLabel: string; // ex: "Productive", "Maintaining" (Garmin)
   ctl: number | null;
   atl: number | null;
-  tsb: number | null;
+  tsb: number | null; // [Certo] TSB = CTL - ATL, real (Intervals.icu), não aproximação
   history: TrainingLoadPoint[];
-  acwrStatus?: string; // <- Adiciona apenas esta linha
 }
 
 /**

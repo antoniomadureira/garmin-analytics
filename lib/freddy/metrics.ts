@@ -12,65 +12,65 @@
  * mudar no provider, muda-se aqui e só aqui.
  *
  * GAPS CONHECIDOS (não inventar dados para os preencher):
- * 1. [Certo — CONFIRMADO em runtime, 2 corridas reais de 2026-06-23/24]
- * Running Dynamics clássica (vertical oscillation, ground contact time,
- * ground contact balance, stride length) NÃO existe em lado nenhum:
- * nem em list_metrics, nem dentro do raw payload de `activityDetail_samples`.
- * O raw real só contém os streams: heart_rate, speed, cadence, altitude,
- * power, latitude, longitude. Conclusão definitiva, não suposição:
- * a secção "Running Dynamics" da espec original promete dados que a
- * fenix 7 + Freddy não entregam por esta via. Limitação permanente,
- * não um gap temporário a resolver depois.
- * 2. Não existe TSB/CTL/ATL ao estilo TrainingPeaks. O substituto real é
- * ACWR (Acute:Chronic Workload Ratio) via `acuteTrainingLoad_*`.
- * Qualquer card que use a palavra "TSB" tem de deixar claro que é
- * uma adaptação, não a métrica original.
- * 3. VO2 Max tem 4 fontes concorrentes. Hierarquia adotada nesta versão:
- * canónica (card principal) -> userMetrics_vo2Max
- * série histórica longa     -> maxMet_running_vo2MaxValue
- * validação cruzada         -> summarizedActivity_vO2MaxValue
- * biometria (Fitness Age)   -> fitnessAge_biometricVo2Max
- * Esta hierarquia é uma decisão de produto, não um facto do provider.
- * Se a equipa de coaching discordar, mudar APENAS aqui.
- * 4. [Ainda relevante, reduzido] O texto que recebo ao chamar query_metrics
- * nesta conversa é a renderização humana do wrapper do chat, não
- * necessariamente o envelope JSON-RPC literal que o SDK
- * `@modelcontextprotocol/sdk` recebe em `client.callTool()` em produção.
- * Os campos `raw` confirmados abaixo resolvem isto para o CONTEÚDO dos
- * dados — mas o formato do content block que o envolve (string JSON a
- * fazer parse vs já objeto) continua por confirmar contra uma chamada
- * real feita em código, não nesta conversa.
+ *   1. [Certo — CONFIRMADO em runtime, 2 corridas reais de 2026-06-23/24]
+ *      Running Dynamics clássica (vertical oscillation, ground contact time,
+ *      ground contact balance, stride length) NÃO existe em lado nenhum:
+ *      nem em list_metrics, nem dentro do raw payload de `activityDetail_samples`.
+ *      O raw real só contém os streams: heart_rate, speed, cadence, altitude,
+ *      power, latitude, longitude. Conclusão definitiva, não suposição:
+ *      a secção "Running Dynamics" da espec original promete dados que a
+ *      fenix 7 + Freddy não entregam por esta via. Limitação permanente,
+ *      não um gap temporário a resolver depois.
+ *   2. Não existe TSB/CTL/ATL ao estilo TrainingPeaks. O substituto real é
+ *      ACWR (Acute:Chronic Workload Ratio) via `acuteTrainingLoad_*`.
+ *      Qualquer card que use a palavra "TSB" tem de deixar claro que é
+ *      uma adaptação, não a métrica original.
+ *   3. VO2 Max tem 4 fontes concorrentes. Hierarquia adotada nesta versão:
+ *        canónica (card principal) -> userMetrics_vo2Max
+ *        série histórica longa     -> maxMet_running_vo2MaxValue
+ *        validação cruzada         -> summarizedActivity_vO2MaxValue
+ *        biometria (Fitness Age)   -> fitnessAge_biometricVo2Max
+ *      Esta hierarquia é uma decisão de produto, não um facto do provider.
+ *      Se a equipa de coaching discordar, mudar APENAS aqui.
+ *   4. [Ainda relevante, reduzido] O texto que recebo ao chamar query_metrics
+ *      nesta conversa é a renderização humana do wrapper do chat, não
+ *      necessariamente o envelope JSON-RPC literal que o SDK
+ *      `@modelcontextprotocol/sdk` recebe em `client.callTool()` em produção.
+ *      Os campos `raw` confirmados abaixo resolvem isto para o CONTEÚDO dos
+ *      dados — mas o formato do content block que o envolve (string JSON a
+ *      fazer parse vs já objeto) continua por confirmar contra uma chamada
+ *      real feita em código, não nesta conversa.
  *
- * 5. [Certo — CONFIRMADO em runtime, 2026-06-25, via include_raw em dados
- * reais] Três correções importantes às suposições anteriores:
+ *   5. [Certo — CONFIRMADO em runtime, 2026-06-25, via include_raw em dados
+ *      reais] Três correções importantes às suposições anteriores:
  *
- * a) `trainingReadiness_score` raw devolve `level` e `feedbackShort`
- * como CÓDIGOS em inglês maiúsculo (ex: "POOR", "LOW",
- * "TIME_TO_SLOW_DOWN", "HIGH_RECOVERY_NEEDS"), não frases prontas
- * nem em português. A UI tem de traduzir via dicionário — ver
- * READINESS_LEVEL_LABELS / READINESS_FEEDBACK_LABELS abaixo.
+ *      a) `trainingReadiness_score` raw devolve `level` e `feedbackShort`
+ *         como CÓDIGOS em inglês maiúsculo (ex: "POOR", "LOW",
+ *         "TIME_TO_SLOW_DOWN", "HIGH_RECOVERY_NEEDS"), não frases prontas
+ *         nem em português. A UI tem de traduzir via dicionário — ver
+ *         READINESS_LEVEL_LABELS / READINESS_FEEDBACK_LABELS abaixo.
  *
- * b) `trainingReadiness_score.recoveryTime` vem em SEGUNDOS
- * (ex: 5280 = 88 min), não em horas. RecoveryCard estava a assumir
- * horas diretamente — corrigir na conversão.
+ *      b) `trainingReadiness_score.recoveryTime` vem em SEGUNDOS
+ *         (ex: 5280 = 88 min), não em horas. RecoveryCard estava a assumir
+ *         horas diretamente — corrigir na conversão.
  *
- * c) `acuteTrainingLoad_*` raw confirma exatamente os campos já usados:
- * `acwrStatus` ("OPTIMAL"/"LOW"/presumivelmente "HIGH"),
- * `dailyTrainingLoadAcute`, `dailyTrainingLoadChronic`,
- * `dailyAcuteChronicWorkloadRatio`. `calendarDate` vem em
- * epoch milissegundos, não string ISO — converter com `new Date()`.
+ *      c) `acuteTrainingLoad_*` raw confirma exatamente os campos já usados:
+ *         `acwrStatus` ("OPTIMAL"/"LOW"/presumivelmente "HIGH"),
+ *         `dailyTrainingLoadAcute`, `dailyTrainingLoadChronic`,
+ *         `dailyAcuteChronicWorkloadRatio`. `calendarDate` vem em
+ *         epoch milissegundos, não string ISO — converter com `new Date()`.
  *
- * d) `userMetrics_vo2Max` raw é simples: `{ vo2Max, fitnessAge,
- * calendarDate, enhanced }`. Sem surpresas aqui.
+ *      d) `userMetrics_vo2Max` raw é simples: `{ vo2Max, fitnessAge,
+ *         calendarDate, enhanced }`. Sem surpresas aqui.
  *
- * e) `sleep_durationInSeconds` raw devolve o registo de sono completo,
- * não só a duração: `overallSleepScore` é um OBJETO
- * `{ value, qualifierKey }`, não um número direto. `sleepScores`
- * contém qualifiers (POOR/FAIR/GOOD/EXCELLENT) por dimensão
- * (stress, awakeCount, restlessness, remPercentage, totalDuration,
- * deepPercentage, lightPercentage). `sleepLevelsMap` tem os
- * intervalos rem/deep/light/awake em epoch seconds — útil para um
- * gráfico de hipnograma futuro, não necessário para o card resumo.
+ *      e) `sleep_durationInSeconds` raw devolve o registo de sono completo,
+ *         não só a duração: `overallSleepScore` é um OBJETO
+ *         `{ value, qualifierKey }`, não um número direto. `sleepScores`
+ *         contém qualifiers (POOR/FAIR/GOOD/EXCELLENT) por dimensão
+ *         (stress, awakeCount, restlessness, remPercentage, totalDuration,
+ *         deepPercentage, lightPercentage). `sleepLevelsMap` tem os
+ *         intervalos rem/deep/light/awake em epoch seconds — útil para um
+ *         gráfico de hipnograma futuro, não necessário para o card resumo.
  * =============================================================================
  */
 
@@ -313,9 +313,6 @@ export interface TrainingLoadSummary {
   acwrStatus: string; // ex: "OPTIMAL" | "HIGH" | "LOW" — confirmar valores reais no provider
   trainingStatus: string;
   fitnessLevelTrend: string;
-  ctl: number | null;
-  atl: number | null;
-  tsb: number | null;
 }
 
 export interface Vo2MaxSummary {
@@ -502,9 +499,9 @@ export class FreddyDataService {
    * corrigido aqui para não alargar o escopo desta funcionalidade nova).
    *
    * Faz 2 chamadas separadas de propósito:
-   * 1. métricas escalares (sem raw) — simples, sem ambiguidade.
-   * 2. SÓ activityDetail_samples com includeRaw — isola o único raw
-   * real desta atividade, sem misturar com outros blocos.
+   *   1. métricas escalares (sem raw) — simples, sem ambiguidade.
+   *   2. SÓ activityDetail_samples com includeRaw — isola o único raw
+   *      real desta atividade, sem misturar com outros blocos.
    * [Provável] Se houver mais de uma atividade no mesmo dia, esta função
    * só devolve a primeira (limitação conhecida, não tratada aqui).
    */
@@ -624,18 +621,18 @@ export class FreddyDataService {
 
   /**
    * Comparação homóloga. [Certo, confirmado por teste cruzado real]:
-   * 1. `summarizedActivity_elevationGain` está errado por um fator de
-   * EXATAMENTE 100x — confirmado comparando as mesmas 4 corridas de
-   * 2026-06-21 nas duas tabelas (activity_totalElevationGainInMeters:
-   * 114.37/9.59/5.13/2.37m vs summarizedActivity_elevationGain:
-   * 11437/958.99/512.99/237 — razão exata 100.0 nos 4 casos).
-   * 2. `summarizedActivity_*` tem uma janela sem dados (~1 mês mais
-   * recente, ex: 2026-05-21 a 2026-06-21) que `activity_*` cobre. As
-   * duas tabelas sobrepõem-se na fronteira (mesmo dia, mesmos valores
-   * de distância/duração) — por isso, para o período coberto por
-   * `activity_*`, usa-se essa fonte (elevação já correta) e
-   * descarta-se `summarizedActivity_*` para essas mesmas datas, para
-   * não contar a dobrar.
+   *   1. `summarizedActivity_elevationGain` está errado por um fator de
+   *      EXATAMENTE 100x — confirmado comparando as mesmas 4 corridas de
+   *      2026-06-21 nas duas tabelas (activity_totalElevationGainInMeters:
+   *      114.37/9.59/5.13/2.37m vs summarizedActivity_elevationGain:
+   *      11437/958.99/512.99/237 — razão exata 100.0 nos 4 casos).
+   *   2. `summarizedActivity_*` tem uma janela sem dados (~1 mês mais
+   *      recente, ex: 2026-05-21 a 2026-06-21) que `activity_*` cobre. As
+   *      duas tabelas sobrepõem-se na fronteira (mesmo dia, mesmos valores
+   *      de distância/duração) — por isso, para o período coberto por
+   *      `activity_*`, usa-se essa fonte (elevação já correta) e
+   *      descarta-se `summarizedActivity_*` para essas mesmas datas, para
+   *      não contar a dobrar.
    * `activity_*` só guarda os últimos ~30-35 dias (confirmado: pedir
    * `days` maior simplesmente não devolve mais — não é um parâmetro a
    * ajustar, é o histórico real disponível nessa tabela).
@@ -1212,24 +1209,15 @@ function mapToTrainingReadiness(raw: Record<string, unknown>): TrainingReadiness
 
 function mapToTrainingLoad(raw: Record<string, unknown>): TrainingLoadSummary[] {
   const entries = Object.entries(raw) as [string, TrainingLoadRaw][];
-  return entries.map(([, r]) => {
-    const ctl = r.dailyTrainingLoadChronic ?? null;
-    const atl = r.dailyTrainingLoadAcute ?? null;
-    const tsb = (ctl !== null && atl !== null) ? Math.round(ctl - atl) : null;
-
-    return {
-      date: new Date(r.calendarDate).toISOString().slice(0, 10), // epoch ms -> YYYY-MM-DD
-      acuteLoad: r.dailyTrainingLoadAcute,
-      chronicLoad: r.dailyTrainingLoadChronic,
-      acwrRatio: r.dailyAcuteChronicWorkloadRatio,
-      acwrStatus: r.acwrStatus,
-      trainingStatus: "", // [Suposição] vem de trainingHistory_trainingStatus, métrica separada — não testado ainda
-      fitnessLevelTrend: "", // idem, trainingHistory_fitnessLevelTrend
-      ctl,
-      atl,
-      tsb
-    };
-  });
+  return entries.map(([, r]) => ({
+    date: new Date(r.calendarDate).toISOString().slice(0, 10), // epoch ms -> YYYY-MM-DD
+    acuteLoad: r.dailyTrainingLoadAcute,
+    chronicLoad: r.dailyTrainingLoadChronic,
+    acwrRatio: r.dailyAcuteChronicWorkloadRatio,
+    acwrStatus: r.acwrStatus,
+    trainingStatus: "", // [Suposição] vem de trainingHistory_trainingStatus, métrica separada — não testado ainda
+    fitnessLevelTrend: "", // idem, trainingHistory_fitnessLevelTrend
+  }));
 }
 /** Shape real confirmado do raw de userMetrics_vo2Max — simples, sem surpresas. */
 interface Vo2MaxRaw {

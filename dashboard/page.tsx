@@ -55,13 +55,10 @@ async function loadTrainingLoad(service: Awaited<ReturnType<typeof getFreddyData
     vo2Max: 54,
     trainingStatusLabel: "Productive",
     acwrStatus: "OPTIMAL",
-    ctl: 260,
-    atl: 280,
-    tsb: -20,
     history: Array.from({ length: 8 }, (_, i) => ({
       date: `S${i + 1}`,
-      atl: 280 + Math.round(Math.sin(i) * 40 + i * 6),
-      ctl: 260 + i * 8,
+      acute: 280 + Math.round(Math.sin(i) * 40 + i * 6),
+      chronic: 260 + i * 8,
     })),
   };
   if (!service) return { data: mock, isReal: false, error: connectError };
@@ -76,9 +73,6 @@ async function loadTrainingLoad(service: Awaited<ReturnType<typeof getFreddyData
         vo2Max: vo2?.canonicalValue ?? mock.vo2Max,
         trainingStatusLabel: load.trainingStatus || mock.trainingStatusLabel, // [TODO] trainingStatus vazio até confirmar trainingHistory_*
         acwrStatus: load.acwrStatus,
-        ctl: load.ctl ?? mock.ctl,
-        atl: load.atl ?? mock.atl,
-        tsb: load.tsb ?? mock.tsb,
         history: mock.history, // [TODO] precisa de série de 8 semanas real, não só o último dia
       },
       isReal: true,
@@ -253,7 +247,7 @@ export default async function DashboardPage() {
   const acwrLabelForBanner: Record<string, string> = { OPTIMAL: "Ótimo (Optimal)", HIGH: "Alto", LOW: "Baixo" };
   const formMessage = `Forma ${
     trainingLoadResult.data.acwrStatus === "OPTIMAL" ? "equilibrada" : trainingLoadResult.data.acwrStatus === "HIGH" ? "sob pressão" : "com espaço para mais"
-  }. ACWR ${acwrLabelForBanner[trainingLoadResult.data.acwrStatus ?? ""] ?? trainingLoadResult.data.acwrStatus}. ${
+  }. ACWR ${acwrLabelForBanner[trainingLoadResult.data.acwrStatus] ?? trainingLoadResult.data.acwrStatus}. ${
     readinessResult.data.feedbackShort
   }`;
   const formTone: "emerald" | "amber" | "red" = trainingLoadResult.data.acwrStatus === "OPTIMAL" ? "emerald" : trainingLoadResult.data.acwrStatus === "HIGH" ? "red" : "amber";
