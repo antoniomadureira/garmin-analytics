@@ -57,8 +57,12 @@ export default async function RunningPage() {
     { date: "2026-06-21", distanceKm: 10.1, durationSec: 2406, paceMinPerKm: 3.98, elevationGainM: 114 },
   ];
 
-  const monthlyResult = service ? await loadMonthly(service) : { data: mockMonthly, isReal: false, error: connectError };
-  const activitiesResult = service ? await loadActivities(service) : { data: mockActivities, isReal: false, error: connectError };
+  const [monthlyResult, activitiesResult] = service
+    ? await Promise.all([loadMonthly(service), loadActivities(service)])
+    : [
+        { data: mockMonthly, isReal: false, error: connectError },
+        { data: mockActivities, isReal: false, error: connectError },
+      ];
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
