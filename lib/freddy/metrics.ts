@@ -229,6 +229,26 @@ export const SummarizedActivityMetrics = {
   ],
 } as const;
 
+/**
+ * [Certo] Confirmado por teste real (2026-06-26): wellness_* (Intervals.icu)
+ * está atualizado até HOJE, ao contrário de trainingReadiness_score do
+ * Garmin direto (5 dias de atraso na altura do teste). Qualquer um destes
+ * campos, pedido com include_raw, devolve o registo diário COMPLETO — não
+ * é preciso pedir vários, um chega.
+ */
+export const WellnessMetrics = {
+  restingHr: "wellness_restingHR",
+  hrv: "wellness_hrv",
+  ctl: "wellness_ctl",
+  atl: "wellness_atl",
+  rampRate: "wellness_rampRate",
+  sleepScore: "wellness_sleepScore",
+  sleepSecs: "wellness_sleepSecs",
+  sleepQuality: "wellness_sleepQuality",
+  steps: "wellness_steps",
+  vo2max: "wellness_vo2max",
+} as const;
+
 export const DailyAggregateMetrics = {
   steps: "daily_steps",
   distanceM: "daily_distanceInMeters",
@@ -639,6 +659,41 @@ export class FreddyDataService {
    * `dailyBodyBattery_chargedValue` dava 47-48, um conceito diferente
    * (quanto carregou no dia, não o nível atual/pico).
    */
+  /**
+   * [Certo] Shape real confirmado (2026-06-26): um único campo wellness_*
+   * com include_raw devolve TODO o registo diário (ctl, atl, rampRate,
+   * restingHR, hrv, sleepSecs, sleepScore, sleepQuality, steps, vo2max,
+   * e campos de autorregisto como readiness/fatigue/mood, null se o
+   * utilizador não os preencher manualmente no Intervals.icu).
+   */
+  async getWellnessWeekly(days = 7): Promise<WellnessDay[]> {
+    const raw = await this.client.queryMetrics({
+      metrics: [WellnessMetrics.restingHr],
+      days,
+      includeRaw: true,
+    });
+    const entries = Object.entries(raw) as [string, WellnessRaw][];
+    return entries
+      .map(([date, r]) => ({
+        date,
+        ctl: r.ctl ?? null,
+        atl: r.atl ?? null,
+        tsb:
+          r.ctl !== undefined && r.atl !== undefined && r.ctl !== null && r.atl !== null
+            ? roundTo(r.ctl - r.atl, 1)
+            : null,
+        rampRate: r.rampRate ?? null,
+        restingHr: r.restingHR ?? null,
+        hrv: r.hrv ?? null,
+        sleepScore: r.sleepScore ?? null,
+        sleepSecs: r.sleepSecs ?? null,
+        steps: r.steps ?? null,
+        vo2max: r.vo2max ?? null,
+        readiness: r.readiness ?? null,
+      }))
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+
   async getBodyBatteryWeekly(days = 7): Promise<
     { date: string; max: number | null; min: number | null; avgStress: number | null; maxStress: number | null }[]
   > {
@@ -917,7 +972,40 @@ export class FreddyDataService {
  * e 23354613062-detail). Esta é a única interface deste ficheiro que não é
  * suposição — é cópia estrutural do JSON devolvido.
  */
-export interface ActivityDetailSamplesRaw {
+export /** [Certo] Shape real confirmado via include_raw em wellness_restingHR, 2026-06-26. */
+interface WellnessRaw {
+  id: string;
+  ctl?: number | null;
+  atl?: number | null;
+  rampRate?: number | null;
+  restingHR?: number | null;
+  hrv?: number | null;
+  sleepSecs?: number | null;
+  sleepScore?: number | null;
+  sleepQuality?: number | null;
+  steps?: number | null;
+  vo2max?: number | null;
+  readiness?: number | null;
+  updated?: string;
+}
+
+export interface WellnessDay {
+  date: string;
+  ctl: number | null;
+  atl: number | null;
+  /** TSB = CTL - ATL, real, da metodologia TrainingPeaks/Intervals.icu — não é mais a aproximação ACWR do Garmin. */
+  tsb: number | null;
+  rampRate: number | null;
+  restingHr: number | null;
+  hrv: number | null;
+  sleepScore: number | null;
+  sleepSecs: number | null;
+  steps: number | null;
+  vo2max: number | null;
+  readiness: number | null;
+}
+
+interface ActivityDetailSamplesRaw {
   startTime: string; // ISO 8601
   recordingRate: number | null;
   sampleCount: number;

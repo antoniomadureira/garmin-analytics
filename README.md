@@ -67,3 +67,23 @@ Auth real do Freddy: OAuth 2.0 Device Authorization Grant + Dynamic Client Regis
 2ª versão: API key pessoal — baseada numa "evidência" que era uma cópia de um output desta
 própria conversa, não um teste real. 3ª versão (atual): device flow + DCR, testado e
 confirmado pelo utilizador contra o servidor real do freddy.coach.
+
+
+## Integração Intervals.icu (resolve o atraso de sincronização) — 2026-06-26
+[Certo] Descoberta confirmada por teste real: o Garmin entrega dados ao Freddy só
+por webhook (arquitetura do próprio Garmin, sem endpoint de "pedir agora" — por
+isso `sync_provider` não suporta Garmin). Cada categoria de dado (atividades,
+sono, userMetrics/Training Readiness) tem o seu próprio webhook, com atrasos
+muito diferentes — Training Readiness viu-se com 5 dias de atraso.
+
+O Intervals.icu, ligado ao Freddy e já a buscar do mesmo Garmin, está sempre
+atualizado até ao dia corrente (confirmado: CTL/ATL/HRV/FC repouso/sono de hoje).
+Passou a ser a fonte principal para:
+- HRV (Readiness card) — valor real em ms, classificado vs média de 7 dias.
+- Estado de Treino — TSB/CTL/ATL reais (TrainingPeaks/Intervals.icu), substituindo
+  a aproximação ACWR do Garmin que se usava antes.
+- Estado de Forma (banner + dados do Treinador IA) — usa TSB como fonte primária,
+  Training Readiness do Garmin como contexto secundário/histórico quando desatualizado.
+
+Novo método: `getWellnessWeekly()` em `lib/freddy/metrics.ts` — um único campo
+`wellness_*` com `include_raw` devolve o registo diário completo.

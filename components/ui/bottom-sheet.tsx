@@ -29,16 +29,17 @@ export function BottomSheet({
       {/* Fundo escurecido — clicar fecha */}
       <div
         onClick={onClose}
-        className={`fixed inset-0 z-40 bg-black/60 transition-opacity duration-300 ${
-          open ? "opacity-100" : "pointer-events-none opacity-0"
-        }`}
+        className={`fixed inset-0 z-40 bg-black/60 ${open ? "" : "pointer-events-none"}`}
+        style={{ transition: "opacity 300ms ease-out", opacity: open ? 1 : 0 }}
       />
 
       {/* Painel — desliza de baixo para cima */}
       <div
-        className={`fixed inset-x-0 bottom-0 z-50 flex max-h-[88vh] flex-col overflow-hidden rounded-t-2xl border-t border-slate-800 bg-slate-950 shadow-2xl transition-transform duration-300 ease-out ${
-          open ? "translate-y-0" : "translate-y-full"
-        }`}
+        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[88vh] flex-col overflow-hidden rounded-t-2xl border-t border-slate-800 bg-slate-950 shadow-2xl"
+        style={{
+          transition: "transform 350ms cubic-bezier(0.32, 0.72, 0, 1)",
+          transform: open ? "translateY(0)" : "translateY(100%)",
+        }}
         role="dialog"
         aria-modal="true"
       >

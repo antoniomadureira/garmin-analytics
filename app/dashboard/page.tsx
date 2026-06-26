@@ -31,9 +31,10 @@ async function loadReadiness(service: Awaited<ReturnType<typeof getFreddyDataSer
   };
   if (!service) return { data: mock, isReal: false, error: connectError };
   try {
-    const [readinessEntries, sleepEntries] = await Promise.all([
+    const [readinessEntries, sleepEntries, wellness] = await Promise.all([
       service.getTrainingReadiness(10), // [Certo] janela maior que 7 — este metric tem atraso de sync confirmado (até 5 dias)
       service.getSleepSummary(3).catch(() => []),
+      service.getWellnessWeekly(7).catch(() => []), // [Certo] Intervals.icu — sempre fresco, usado para HRV e como reforço do sono
     ]);
     const latest = readinessEntries.reduce(
       (best, cur) => (!best || cur.date > best.date ? cur : best),
@@ -42,6 +43,17 @@ async function loadReadiness(service: Awaited<ReturnType<typeof getFreddyDataSer
     if (!latest) throw new Error("Sem registo de readiness no período pedido.");
 
     const latestSleep = sleepEntries.reduce((best, cur) => (!best || cur.date > best.date ? cur : best), sleepEntries[0]);
+    const latestWellness = wellness[wellness.length - 1];
+    const hrvValues = wellness.map((w) => w.hrv).filter((v): v is number => v !== null);
+    const hrvAvg = hrvValues.length ? hrvValues.reduce((a, b) => a + b, 0) / hrvValues.length : null;
+    // [Provável] Classificação simples vs a média dos últimos 7 dias — não é a metodologia oficial
+    // de baseline do Garmin (que usa janelas mais longas), mas é honesta sobre o que realmente compara.
+    const hrvLabel =
+      latestWellness?.hrv === undefined || latestWellness?.hrv === null
+        ? mock.hrvStatusLabel
+        : hrvAvg === null
+          ? `${latestWellness.hrv}ms`
+          : `${latestWellness.hrv}ms (${latestWellness.hrv >= hrvAvg ? "≥" : "<"} média 7d)`;
 
     const todayStr = new Date().toISOString().slice(0, 10);
     const staleDaysAgo = Math.round((new Date(todayStr).getTime() - new Date(latest.date).getTime()) / 86400000);
@@ -51,8 +63,8 @@ async function loadReadiness(service: Awaited<ReturnType<typeof getFreddyDataSer
         score: latest.score,
         level: latest.level,
         feedbackShort: latest.feedbackShort,
-        sleepScore: latestSleep?.overallScore ?? mock.sleepScore,
-        hrvStatusLabel: mock.hrvStatusLabel, // [TODO] sem mapper de status HRV qualitativo ainda
+        sleepScore: latestWellness?.sleepScore ?? latestSleep?.overallScore ?? mock.sleepScore,
+        hrvStatusLabel: hrvLabel,
         acuteLoad: latest.acuteLoad ?? 0,
         staleDaysAgo: staleDaysAgo > 0 ? staleDaysAgo : null,
       },
@@ -67,26 +79,37 @@ async function loadTrainingLoad(service: Awaited<ReturnType<typeof getFreddyData
   const mock: TrainingLoadCardData = {
     vo2Max: 54,
     trainingStatusLabel: "Productive",
-    acwrStatus: "OPTIMAL",
+    ctl: 49.5,
+    atl: 37.8,
+    tsb: 11.7,
     history: Array.from({ length: 8 }, (_, i) => ({
       date: `S${i + 1}`,
-      acute: 280 + Math.round(Math.sin(i) * 40 + i * 6),
-      chronic: 260 + i * 8,
+      ctl: 45 + i * 0.6,
+      atl: 38 + Math.round(Math.sin(i) * 8),
     })),
   };
   if (!service) return { data: mock, isReal: false, error: connectError };
   try {
-    const loadEntries = await service.getTrainingLoadSummary(7);
-    const vo2Entries = await service.getVo2MaxSummary(7);
+    const [loadEntries, vo2Entries, wellness] = await Promise.all([
+      service.getTrainingLoadSummary(7).catch(() => []),
+      service.getVo2MaxSummary(7).catch(() => []),
+      service.getWellnessWeekly(56), // [Certo] 8 semanas, real, sempre fresco (Intervals.icu)
+    ]);
     const load = loadEntries.reduce((best, cur) => (!best || cur.date > best.date ? cur : best), loadEntries[0]);
     const vo2 = vo2Entries.reduce((best, cur) => (!best || cur.date > best.date ? cur : best), vo2Entries[0]);
-    if (!load) throw new Error("Sem registo de training load no período pedido.");
+    const latestWellness = wellness[wellness.length - 1]; // já vem ordenado por data ascendente
+    if (!latestWellness) throw new Error("Sem registo de wellness (Intervals.icu) no período pedido.");
+
     return {
       data: {
         vo2Max: vo2?.canonicalValue ?? mock.vo2Max,
-        trainingStatusLabel: load.trainingStatus || mock.trainingStatusLabel, // [TODO] trainingStatus vazio até confirmar trainingHistory_*
-        acwrStatus: load.acwrStatus,
-        history: mock.history, // [TODO] precisa de série de 8 semanas real, não só o último dia
+        trainingStatusLabel: load?.trainingStatus || mock.trainingStatusLabel, // [TODO] trainingStatus vazio até confirmar trainingHistory_* isolado
+        ctl: latestWellness.ctl,
+        atl: latestWellness.atl,
+        tsb: latestWellness.tsb,
+        history: wellness
+          .filter((w) => w.ctl !== null && w.atl !== null)
+          .map((w) => ({ date: w.date.slice(5), ctl: w.ctl as number, atl: w.atl as number })),
       },
       isReal: true,
     };
@@ -270,13 +293,19 @@ export default async function DashboardPage() {
     null // [TODO] FC média semanal ainda não recolhida separadamente
   );
 
-  const acwrLabelForBanner: Record<string, string> = { OPTIMAL: "Ótimo (Optimal)", HIGH: "Alto", LOW: "Baixo" };
-  const formMessage = `Forma ${
-    trainingLoadResult.data.acwrStatus === "OPTIMAL" ? "equilibrada" : trainingLoadResult.data.acwrStatus === "HIGH" ? "sob pressão" : "com espaço para mais"
-  }. ACWR ${acwrLabelForBanner[trainingLoadResult.data.acwrStatus] ?? trainingLoadResult.data.acwrStatus}. ${
-    readinessResult.data.feedbackShort
-  }`;
-  const formTone: "emerald" | "amber" | "red" = trainingLoadResult.data.acwrStatus === "OPTIMAL" ? "emerald" : trainingLoadResult.data.acwrStatus === "HIGH" ? "red" : "amber";
+  const tsb = trainingLoadResult.data.tsb;
+  const tsbDescription =
+    tsb === null
+      ? "sem dado de TSB disponível"
+      : tsb > 5
+        ? "fresca — boa janela para subir intensidade"
+        : tsb >= -10
+          ? "equilibrada — janela segura para manter ou subir intensidade com moderação"
+          : tsb >= -20
+            ? "com fadiga acumulada — considere reduzir volume nos próximos dias"
+            : "em sobrecarga — recomenda-se descanso ou treino muito leve";
+  const formMessage = `Forma ${tsbDescription}. TSB ${tsb !== null ? (tsb > 0 ? "+" : "") + tsb : "—"} (CTL ${trainingLoadResult.data.ctl ?? "—"} / ATL ${trainingLoadResult.data.atl ?? "—"}). ${readinessResult.data.feedbackShort}`;
+  const formTone: "emerald" | "amber" | "red" = tsb === null ? "amber" : tsb > 5 ? "emerald" : tsb >= -10 ? "emerald" : tsb >= -20 ? "amber" : "red";
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -290,20 +319,20 @@ export default async function DashboardPage() {
 
         <section>
           <h2 className="mb-3 text-sm font-medium text-slate-400">Em Foco</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
+          <div className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="flex h-full flex-col">
               <ReadinessCard data={readinessResult.data} />
               <CardSourceNote isReal={readinessResult.isReal} error={readinessResult.error} />
             </div>
-            <div>
+            <div className="flex h-full flex-col">
               <TrainingLoadCard data={trainingLoadResult.data} />
               <CardSourceNote isReal={trainingLoadResult.isReal} error={trainingLoadResult.error} />
             </div>
-            <div>
+            <div className="flex h-full flex-col">
               <RunningSummaryCard data={runningResult.data} />
               <CardSourceNote isReal={runningResult.isReal} error={runningResult.error} />
             </div>
-            <div>
+            <div className="flex h-full flex-col">
               <RecoveryCard data={recoveryResult.data} />
               <CardSourceNote isReal={recoveryResult.isReal} error={recoveryResult.error} />
             </div>
@@ -317,7 +346,7 @@ export default async function DashboardPage() {
             <StatTile icon={<Zap size={14} />} label="Bateria" value={recoveryResult.data.bodyBatteryMax} unit="%" sublabel="Pico hoje" accent="#22d3ee" />
             <StatTile icon={<Moon size={14} />} label="Sono" value={readinessResult.data.sleepScore} unit="/100" sublabel="Última noite" accent="#a78bfa" />
             <StatTile icon={<ActivityIcon size={14} />} label="VO2 Max" value={trainingLoadResult.data.vo2Max} sublabel="Superior" accent="#34d399" />
-            <StatTile icon={<Gauge size={14} />} label="Carga (ACWR)" value={trainingLoadResult.data.acwrStatus} sublabel="Esta semana" accent="#fb923c" />
+            <StatTile icon={<Gauge size={14} />} label="TSB" value={trainingLoadResult.data.tsb !== null ? (trainingLoadResult.data.tsb > 0 ? `+${trainingLoadResult.data.tsb}` : trainingLoadResult.data.tsb) : null} sublabel="Hoje" accent="#fb923c" />
             <StatTile icon={<Heart size={14} />} label="Stress" value={recoveryResult.data.avgStress} sublabel="Médio recente" accent="#f87171" />
           </div>
         </section>

@@ -12,7 +12,7 @@ export interface RunningSummaryCardData {
 
 export function RunningSummaryCard({ data }: { data: RunningSummaryCardData }) {
   return (
-    <Card glow="cyan">
+    <Card glow="cyan" className="flex-1">
       <CardTitle>Resumo de Corrida</CardTitle>
       <div className="grid grid-cols-3 gap-1 text-center">
         <div>

@@ -22,7 +22,7 @@ const LEVEL_TONE: Record<string, "emerald" | "cyan" | "amber" | "red"> = {
 export function ReadinessCard({ data }: { data: ReadinessCardData }) {
   const tone = LEVEL_TONE[data.level] ?? "cyan";
   return (
-    <Card glow={tone}>
+    <Card glow={tone} className="flex-1">
       <CardTitle>Preparação para Treino</CardTitle>
       <div className="flex items-end justify-between">
         <div>

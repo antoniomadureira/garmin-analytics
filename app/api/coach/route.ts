@@ -18,29 +18,45 @@ interface ChatMessage {
 async function buildContextSummary(): Promise<string> {
   try {
     const service = await getFreddyDataService();
-    const [readinessEntries, loadEntries, running] = await Promise.all([
-      service.getTrainingReadiness(7),
+    const [readinessEntries, loadEntries, running, wellness] = await Promise.all([
+      service.getTrainingReadiness(10),
       service.getTrainingLoadSummary(7),
       service.getWeeklyRunningSummary(7),
+      service.getWellnessWeekly(7).catch(() => []),
     ]);
     const latestReadiness = readinessEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), readinessEntries[0]);
     const latestLoad = loadEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), loadEntries[0]);
+    const latestWellness = wellness[wellness.length - 1];
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const staleDays = latestReadiness
+      ? Math.round((new Date(todayStr).getTime() - new Date(latestReadiness.date).getTime()) / 86400000)
+      : 0;
 
     return [
+      latestWellness
+        ? `[FONTE MAIS FRESCA, Intervals.icu, dados de HOJE ${latestWellness.date}]: CTL (fitness) ${latestWellness.ctl}, ATL (fadiga) ${latestWellness.atl}, TSB (forma) ${latestWellness.tsb} — TSB positivo e alto = fresco/recuperado, TSB muito negativo = fadigado/sobrecarga. HRV: ${latestWellness.hrv ?? "sem dado"} ms. FC repouso: ${latestWellness.restingHr ?? "sem dado"} bpm. Sono: score ${latestWellness.sleepScore ?? "sem dado"}. Usa isto como base principal para avaliar prontidão para treino hoje, em vez do Training Readiness do Garmin se este estiver desatualizado.`
+        : "Sem dados do Intervals.icu disponíveis.",
       latestReadiness
-        ? `Training Readiness mais recente (${latestReadiness.date}): score ${latestReadiness.score}/100, nível ${latestReadiness.level}, feedback: "${latestReadiness.feedbackShort}", acute load ${latestReadiness.acuteLoad}.`
-        : "Sem dados recentes de Training Readiness.",
+        ? `Training Readiness do Garmin — ÚLTIMO REGISTO DISPONÍVEL é de ${latestReadiness.date} (${staleDays} dia(s) atrás, hoje é ${todayStr}): score ${latestReadiness.score}/100, nível ${latestReadiness.level}, feedback original: "${latestReadiness.feedbackShort}".${
+            staleDays > 1
+              ? ` Tem ${staleDays} dias de atraso de sincronização — trata isto como contexto secundário/histórico, não como o estado de hoje. Prioriza o TSB do Intervals.icu acima, que está atualizado.`
+              : ""
+          }`
+        : "Sem dados recentes de Training Readiness do Garmin.",
       latestLoad
-        ? `Carga de treino mais recente (${latestLoad.date}): ACWR status ${latestLoad.acwrStatus}, ratio ${latestLoad.acwrRatio}.`
-        : "Sem dados recentes de carga de treino.",
+        ? `ACWR (Garmin, complementar): status ${latestLoad.acwrStatus}, ratio ${latestLoad.acwrRatio}.`
+        : "",
       `Últimos 7 dias de corrida: ${running.totalDistanceKm} km em ${running.runCount} corridas.`,
-    ].join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
   } catch (err) {
     return `[Sem acesso aos dados reais do Freddy neste momento: ${String(err).slice(0, 150)}]`;
   }
 }
 
-const SYSTEM_PROMPT_BASE = `Você é um treinador de corrida de longa distância, a falar em português de Portugal (pt-PT), direto e baseado em evidência. Use os dados reais fornecidos abaixo para responder. Se a pergunta não puder ser respondida com os dados disponíveis, diga isso claramente em vez de inventar números. Seja conciso (3-6 frases), e dê uma recomendação prática quando fizer sentido. Nunca dê conselhos médicos definitivos — para dor, lesão ou sintomas preocupantes, recomende sempre consultar um profissional de saúde.`;
+const SYSTEM_PROMPT_BASE = `Você é um treinador de corrida de longa distância, a falar em português de Portugal (pt-PT), direto e baseado em evidência. Use os dados reais fornecidos abaixo para responder, priorizando sempre a fonte mais fresca (Intervals.icu/TSB) sobre dados antigos do Garmin quando ambos existirem. Se a pergunta não puder ser respondida com os dados disponíveis, diga isso claramente em vez de inventar números. Se usar um dado do Garmin marcado como desatualizado, é OBRIGATÓRIO mencionar isso explicitamente. Seja conciso (3-6 frases), e dê uma recomendação prática quando fizer sentido. Nunca dê conselhos médicos definitivos — para dor, lesão ou sintomas preocupantes, recomende sempre consultar um profissional de saúde.`;
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.GROQ_API_KEY;

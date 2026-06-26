@@ -21,7 +21,7 @@ function BodyBatteryBar({ max, min }: { max: number; min: number }) {
 
 export function RecoveryCard({ data }: { data: RecoveryCardData }) {
   return (
-    <Card glow="emerald">
+    <Card glow="emerald" className="flex-1">
       <CardTitle>Recuperação</CardTitle>
       <div className="flex items-center justify-between text-sm">
         <span className="text-slate-400">Tempo de Recuperação</span>
