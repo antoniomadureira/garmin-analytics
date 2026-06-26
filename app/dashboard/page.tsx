@@ -154,7 +154,7 @@ async function loadRecoveryInsights(service: Awaited<ReturnType<typeof getFreddy
     const avgStress = latest.avgStress !== null ? Math.round(latest.avgStress) : null;
     return {
       data: {
-        recoveryTimeHours: mock.recoveryTimeHours, // [TODO] depende de trainingReadiness_score, que está com atraso de sync — não usar até isso ser fiável
+        recoveryTimeHours: null, // [Certo] depende de trainingReadiness_score, que tem atraso de sync confirmado — mostrar null em vez de inventar um valor sob a bandeira "dados reais"
         bodyBatteryMax: latest.max ?? mock.bodyBatteryMax,
         bodyBatteryMin: latest.min ?? mock.bodyBatteryMin,
         avgStress: avgStress ?? mock.avgStress,
@@ -311,7 +311,7 @@ export default async function DashboardPage() {
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-medium text-slate-400">Raio-X — Condição Atual</h2>
+          <h2 className="mb-3 text-sm font-medium text-slate-400">Condição Atual</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <StatTile icon={<Heart size={14} />} label="FC Repouso" value={glanceResult.data.restingHr} unit="bpm" sublabel="Hoje" accent="#fb7185" />
             <StatTile icon={<Zap size={14} />} label="Bateria" value={recoveryResult.data.bodyBatteryMax} unit="%" sublabel="Pico hoje" accent="#22d3ee" />

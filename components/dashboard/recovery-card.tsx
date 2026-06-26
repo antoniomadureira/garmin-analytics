@@ -1,7 +1,7 @@
 import { Card, CardTitle } from "@/components/ui/card";
 
 export interface RecoveryCardData {
-  recoveryTimeHours: number;
+  recoveryTimeHours: number | null;
   bodyBatteryMax: number;
   bodyBatteryMin: number;
   avgStress: number;
@@ -25,7 +25,9 @@ export function RecoveryCard({ data }: { data: RecoveryCardData }) {
       <CardTitle>Recuperação</CardTitle>
       <div className="flex items-center justify-between text-sm">
         <span className="text-slate-400">Tempo de Recuperação</span>
-        <span className="font-medium text-slate-100">{data.recoveryTimeHours}h</span>
+        <span className="font-medium text-slate-100" title={data.recoveryTimeHours === null ? "Sem dado recente — trainingReadiness_score tem atraso de sincronização no Freddy" : undefined}>
+          {data.recoveryTimeHours !== null ? `${data.recoveryTimeHours}h` : "—"}
+        </span>
       </div>
       <div className="mt-3">
         <div className="mb-1 flex justify-between text-xs text-slate-500">

@@ -16,18 +16,51 @@ const SUGGESTIONS = [
   "Devo correr hoje ou descansar?",
 ];
 
+const INITIAL_BRIEFING_PROMPT =
+  "Dá-me um resumo direto da minha condição atual, em 4-6 frases: saúde geral, sono, preparação física, e se estou apto para treinar hoje — e se sim, que tipo de treino fazer hoje (ex: fácil, séries, longo, descanso). Usa os dados reais fornecidos.";
+
 export default function CoachPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", content: "Olá! Sou o seu treinador de corrida. Pergunte-me sobre a sua forma, prontidão para treino, ou recuperação — uso os seus dados reais do Freddy para responder." },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const startedRef = useRef(false);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  // [Certo] Pedido automático de insight inicial ao abrir a página — não é
+  // visível como mensagem do utilizador no histórico (não entra em
+  // `messages`), só dispara a chamada e mostra a resposta como primeira
+  // fala do treinador.
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/coach", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: [{ role: "user", content: INITIAL_BRIEFING_PROMPT }] }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error ?? "Erro ao gerar o resumo inicial.");
+          setMessages([
+            { role: "assistant", content: "Olá! Sou o seu treinador de corrida. Pergunte-me sobre a sua forma, prontidão para treino, ou recuperação." },
+          ]);
+          return;
+        }
+        setMessages([{ role: "assistant", content: data.reply }]);
+      } catch (err) {
+        setError(String(err));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   async function send(text: string) {
     if (!text.trim() || loading) return;
