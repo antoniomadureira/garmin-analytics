@@ -631,6 +631,39 @@ export class FreddyDataService {
    * mesma técnica de extração escalar por data usada no running summary.
    */
   /** [Certo] daily_steps e uds_dailyStepGoal partilham o mesmo registo diário (confirmado). */
+  /**
+   * [Certo] Substitui o modelo errado anterior (dailyBodyBattery_charged/
+   * drainedValue, que media outra coisa). Confirmado por teste cruzado real:
+   * `stress_bodyBatteryMax` para 2026-06-25 deu 76 — bate exatamente com o
+   * valor "Body Battery" mostrado no Garmin Connect real para esse dia.
+   * `dailyBodyBattery_chargedValue` dava 47-48, um conceito diferente
+   * (quanto carregou no dia, não o nível atual/pico).
+   */
+  async getBodyBatteryWeekly(days = 7): Promise<
+    { date: string; max: number | null; min: number | null; avgStress: number | null; maxStress: number | null }[]
+  > {
+    if (!this.client.queryRawText) {
+      throw new Error("Este client não implementa queryRawText — necessário para body battery semanal.");
+    }
+    const text = await this.client.queryRawText({
+      metrics: [BodyBatteryMetrics.max, BodyBatteryMetrics.min, StressMetrics.avgLastWindow, StressMetrics.maxLastWindow],
+      days,
+    });
+    const maxByDate = extractValuesByDate(text, BodyBatteryMetrics.max);
+    const minByDate = extractValuesByDate(text, BodyBatteryMetrics.min);
+    const avgStressByDate = extractValuesByDate(text, StressMetrics.avgLastWindow);
+    const maxStressByDate = extractValuesByDate(text, StressMetrics.maxLastWindow);
+
+    const dates = [...new Set([...maxByDate.keys(), ...avgStressByDate.keys()])].sort();
+    return dates.map((date) => ({
+      date,
+      max: maxByDate.get(date)?.[0] ?? null,
+      min: minByDate.get(date)?.[0] ?? null,
+      avgStress: avgStressByDate.get(date)?.[0] ?? null,
+      maxStress: maxStressByDate.get(date)?.[0] ?? null,
+    }));
+  }
+
   async getStepsWeekly(days = 7): Promise<{
     todaySteps: number | null;
     todayGoal: number | null;
@@ -723,11 +756,22 @@ export class FreddyDataService {
       .map(([date, values]) => ({ date, km: roundTo(sum(values) / 1000, 1) }))
       .sort((a, b) => (a.date < b.date ? -1 : 1));
 
+    // [Certo] Preenche os dias sem corrida com 0km — sem isto o gráfico
+    // tinha "buracos" e parecia ter menos de 7 dias quando faltava treino.
+    const filledByDate = new Map(dailyDistanceKm.map((d) => [d.date, d.km]));
+    const fullWeek: { date: string; km: number }[] = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().slice(0, 10);
+      fullWeek.push({ date: dateStr, km: filledByDate.get(dateStr) ?? 0 });
+    }
+
     return {
       totalDistanceKm: roundTo(sum(allDistances) / 1000, 1),
       totalDurationSec: sum(allDurations),
       runCount: allDistances.length,
-      dailyDistanceKm,
+      dailyDistanceKm: fullWeek,
     };
   }
 

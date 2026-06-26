@@ -8,6 +8,8 @@ export interface ReadinessCardData {
   sleepScore: number;
   hrvStatusLabel: string; // ex: "Equilibrado", "Baixo"
   acuteLoad: number;
+  /** [Certo] trainingReadiness_score tem atraso de sincronização confirmado no Freddy (visto até 5 dias). Null = dado de hoje/ontem, sem aviso necessário. */
+  staleDaysAgo?: number | null;
 }
 
 const LEVEL_TONE: Record<string, "emerald" | "cyan" | "amber" | "red"> = {
@@ -30,6 +32,11 @@ export function ReadinessCard({ data }: { data: ReadinessCardData }) {
         <StatusBadge label={data.level} tone={tone} />
       </div>
       <p className="mt-3 text-sm text-slate-300">{data.feedbackShort}</p>
+      {!!data.staleDaysAgo && data.staleDaysAgo > 1 && (
+        <p className="mt-1 text-[11px] text-amber-500">
+          ⚠ Este dado é de há {data.staleDaysAgo} dias — o Freddy ainda não sincronizou um valor mais recente.
+        </p>
+      )}
       <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-800 pt-3 text-center">
         <div>
           <div className="text-xs text-slate-500">Pontuação Sono</div>

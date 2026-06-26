@@ -1,7 +1,7 @@
 import { Footprints, Target, TrendingUp } from "lucide-react";
 import { DashboardNav } from "@/components/dashboard/nav";
 import { StatTile } from "@/components/ui/stat-tile";
-import { Card, CardTitle } from "@/components/ui/card";
+import { TrendLineChart } from "@/components/dashboard/trend-line-chart";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 
 const WEEKDAY_PT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -51,7 +51,6 @@ async function loadSteps(): Promise<{ data: StepsPageData; isReal: boolean; erro
 
 export default async function StepsPage() {
   const { data, isReal, error } = await loadSteps();
-  const maxSteps = Math.max(...data.daily.map((d) => d.steps), data.todayGoal ?? 0, 1);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -65,30 +64,11 @@ export default async function StepsPage() {
           <StatTile icon={<TrendingUp size={14} />} label="Média" value={data.avgSteps7d?.toLocaleString("pt-PT") ?? null} sublabel="7 dias" accent="#a78bfa" />
         </div>
 
-        <Card>
-          <CardTitle>Passos — Últimos 7 Dias</CardTitle>
-          <div className="flex h-44 items-end gap-3">
-            {data.daily.map((d) => (
-              <div key={d.label} className="flex flex-1 flex-col items-center gap-1.5">
-                <div className="relative flex h-32 w-full items-end justify-center">
-                  {d.goal !== null && (
-                    <div
-                      className="absolute w-full border-t border-dashed border-slate-600"
-                      style={{ bottom: `${Math.min((d.goal / maxSteps) * 100, 100)}%` }}
-                    />
-                  )}
-                  <div
-                    className={`w-2.5 rounded-full ${d.goal !== null && d.steps >= d.goal ? "bg-emerald-400" : "bg-slate-600"}`}
-                    style={{ height: `${Math.max((d.steps / maxSteps) * 100, 3)}%` }}
-                    title={`${d.steps.toLocaleString("pt-PT")} passos`}
-                  />
-                </div>
-                <span className="text-[10px] text-slate-500">{d.label}</span>
-              </div>
-            ))}
-          </div>
-          <p className="mt-1 text-[11px] text-slate-500">Linha tracejada = meta do dia. Verde = meta atingida.</p>
-        </Card>
+        <TrendLineChart
+          title="Passos — Últimos 7 Dias"
+          data={data.daily.map((d) => ({ label: d.label, steps: d.steps }))}
+          series={[{ key: "steps", color: "#34d399", label: "Passos" }]}
+        />
 
         {isReal ? (
           <p className="text-[11px] text-emerald-500">● dados reais (Freddy)</p>

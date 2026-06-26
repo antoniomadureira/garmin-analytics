@@ -6,6 +6,8 @@ import { RecoveryCard, type RecoveryCardData } from "@/components/dashboard/reco
 import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
 import { FormBanner, FormRadarCard, type RadarDimension } from "@/components/dashboard/form-state";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
+import { StatTile } from "@/components/ui/stat-tile";
+import { Heart, Zap, Moon, Activity as ActivityIcon, Gauge } from "lucide-react";
 
 // =============================================================================
 // [Provável] Tentamos dados reais para Readiness, TrainingLoad e VO2 Max
@@ -25,23 +27,34 @@ async function loadReadiness(service: Awaited<ReturnType<typeof getFreddyDataSer
     sleepScore: 84,
     hrvStatusLabel: "Equilibrado",
     acuteLoad: 312,
+    staleDaysAgo: null,
   };
   if (!service) return { data: mock, isReal: false, error: connectError };
   try {
-    const readinessEntries = await service.getTrainingReadiness(7);
+    const [readinessEntries, sleepEntries] = await Promise.all([
+      service.getTrainingReadiness(10), // [Certo] janela maior que 7 — este metric tem atraso de sync confirmado (até 5 dias)
+      service.getSleepSummary(3).catch(() => []),
+    ]);
     const latest = readinessEntries.reduce(
       (best, cur) => (!best || cur.date > best.date ? cur : best),
       readinessEntries[0]
     );
     if (!latest) throw new Error("Sem registo de readiness no período pedido.");
+
+    const latestSleep = sleepEntries.reduce((best, cur) => (!best || cur.date > best.date ? cur : best), sleepEntries[0]);
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const staleDaysAgo = Math.round((new Date(todayStr).getTime() - new Date(latest.date).getTime()) / 86400000);
+
     return {
       data: {
         score: latest.score,
         level: latest.level,
         feedbackShort: latest.feedbackShort,
-        sleepScore: mock.sleepScore, // [TODO] mapToSleepSummary ainda não implementado
-        hrvStatusLabel: mock.hrvStatusLabel, // idem
+        sleepScore: latestSleep?.overallScore ?? mock.sleepScore,
+        hrvStatusLabel: mock.hrvStatusLabel, // [TODO] sem mapper de status HRV qualitativo ainda
         acuteLoad: latest.acuteLoad ?? 0,
+        staleDaysAgo: staleDaysAgo > 0 ? staleDaysAgo : null,
       },
       isReal: true,
     };
@@ -135,22 +148,18 @@ async function loadRecoveryInsights(service: Awaited<ReturnType<typeof getFreddy
   };
   if (!service) return { data: mock, isReal: false, error: connectError };
   try {
-    const [recoveryEntries, readinessEntries] = await Promise.all([
-      service.getRecoverySummary(7),
-      service.getTrainingReadiness(7),
-    ]);
-    const latestRecovery = recoveryEntries.reduce((best, cur) => (!best || cur.date > best.date ? cur : best), recoveryEntries[0]);
-    const latestReadiness = readinessEntries.reduce((best, cur) => (!best || cur.date > best.date ? cur : best), readinessEntries[0]);
-    if (!latestRecovery) throw new Error("Sem registo de recuperação no período pedido.");
-    const recoveryTimeHours = latestReadiness?.recoveryTimeHours ?? null;
+    const battery = await service.getBodyBatteryWeekly(7);
+    const latest = battery.reduce((best, cur) => (!best || cur.date > best.date ? cur : best), battery[0]);
+    if (!latest) throw new Error("Sem registo de body battery no período pedido.");
+    const avgStress = latest.avgStress !== null ? Math.round(latest.avgStress) : null;
     return {
       data: {
-        recoveryTimeHours: recoveryTimeHours ?? mock.recoveryTimeHours,
-        bodyBatteryMax: latestRecovery.bodyBatteryMax,
-        bodyBatteryMin: Math.max(0, latestRecovery.bodyBatteryMin),
-        avgStress: Math.round(latestRecovery.avgStress),
+        recoveryTimeHours: mock.recoveryTimeHours, // [TODO] depende de trainingReadiness_score, que está com atraso de sync — não usar até isso ser fiável
+        bodyBatteryMax: latest.max ?? mock.bodyBatteryMax,
+        bodyBatteryMin: latest.min ?? mock.bodyBatteryMin,
+        avgStress: avgStress ?? mock.avgStress,
         recommendation:
-          latestRecovery.avgStress < 35
+          avgStress !== null && avgStress < 35
             ? "Stress controlado e recuperação dentro do esperado. Sem necessidade de dia extra de descanso."
             : "Stress acima do habitual nos últimos dias — considere um dia de recuperação ativa.",
       },
@@ -214,6 +223,22 @@ async function loadYoyKpis(service: Awaited<ReturnType<typeof getFreddyDataServi
   }
 }
 
+interface GlanceData {
+  restingHr: number | null;
+  hrvMs: number | null;
+}
+async function loadGlanceExtra(service: Awaited<ReturnType<typeof getFreddyDataService>> | null): Promise<{ data: GlanceData; isReal: boolean; error?: string }> {
+  const mock: GlanceData = { restingHr: 56, hrvMs: 31 };
+  if (!service) return { data: mock, isReal: false };
+  try {
+    const hr = await service.getHeartRateWeekly(3);
+    // [Provável] HRV ainda não tem método dedicado — leitura direta via queryRawText, fora do FreddyDataService por simplicidade.
+    return { data: { restingHr: hr.restingToday, hrvMs: null }, isReal: true };
+  } catch (err) {
+    return { data: mock, isReal: false, error: String(err) };
+  }
+}
+
 export default async function DashboardPage() {
   // [Certo] Uma única ligação MCP para a página toda — a versão anterior
   // chamava getFreddyDataService() 5 vezes em separado (uma por loader),
@@ -229,12 +254,13 @@ export default async function DashboardPage() {
     connectError = String(err);
   }
 
-  const [readinessResult, trainingLoadResult, yoyResult, runningResult, recoveryResult] = await Promise.all([
+  const [readinessResult, trainingLoadResult, yoyResult, runningResult, recoveryResult, glanceResult] = await Promise.all([
     loadReadiness(service, connectError),
     loadTrainingLoad(service, connectError),
     loadYoyKpis(service, connectError),
     loadRunningSummary(service, connectError),
     loadRecoveryInsights(service, connectError),
+    loadGlanceExtra(service),
   ]);
 
   const radarData = buildRadarData(
@@ -281,6 +307,18 @@ export default async function DashboardPage() {
               <RecoveryCard data={recoveryResult.data} />
               <CardSourceNote isReal={recoveryResult.isReal} error={recoveryResult.error} />
             </div>
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-medium text-slate-400">Raio-X — Condição Atual</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <StatTile icon={<Heart size={14} />} label="FC Repouso" value={glanceResult.data.restingHr} unit="bpm" sublabel="Hoje" accent="#fb7185" />
+            <StatTile icon={<Zap size={14} />} label="Bateria" value={recoveryResult.data.bodyBatteryMax} unit="%" sublabel="Pico hoje" accent="#22d3ee" />
+            <StatTile icon={<Moon size={14} />} label="Sono" value={readinessResult.data.sleepScore} unit="/100" sublabel="Última noite" accent="#a78bfa" />
+            <StatTile icon={<ActivityIcon size={14} />} label="VO2 Max" value={trainingLoadResult.data.vo2Max} sublabel="Superior" accent="#34d399" />
+            <StatTile icon={<Gauge size={14} />} label="Carga (ACWR)" value={trainingLoadResult.data.acwrStatus} sublabel="Esta semana" accent="#fb923c" />
+            <StatTile icon={<Heart size={14} />} label="Stress" value={recoveryResult.data.avgStress} sublabel="Médio recente" accent="#f87171" />
           </div>
         </section>
 

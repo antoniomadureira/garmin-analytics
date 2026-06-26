@@ -14,20 +14,20 @@ export function RunningSummaryCard({ data }: { data: RunningSummaryCardData }) {
   return (
     <Card glow="cyan">
       <CardTitle>Resumo de Corrida</CardTitle>
-      <div className="grid grid-cols-3 gap-2 text-center">
+      <div className="grid grid-cols-3 gap-1 text-center">
         <div>
-          <div className="text-2xl font-semibold text-slate-100">
+          <div className="whitespace-nowrap text-xl font-semibold text-slate-100">
             {data.weeklyDistanceKm.toLocaleString("pt-PT", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
           </div>
-          <div className="text-xs text-slate-500">km esta semana</div>
+          <div className="text-[11px] text-slate-500">km semana</div>
         </div>
         <div>
-          <div className="text-2xl font-semibold text-slate-100">{data.weeklyTimeFormatted}</div>
-          <div className="text-xs text-slate-500">tempo</div>
+          <div className="whitespace-nowrap text-xl font-semibold text-slate-100">{data.weeklyTimeFormatted}</div>
+          <div className="text-[11px] text-slate-500">tempo</div>
         </div>
         <div>
-          <div className="text-2xl font-semibold text-slate-100">{data.runCount}</div>
-          <div className="text-xs text-slate-500">corridas</div>
+          <div className="whitespace-nowrap text-xl font-semibold text-slate-100">{data.runCount}</div>
+          <div className="text-[11px] text-slate-500">corridas</div>
         </div>
       </div>
       <div className="mt-4 h-28">
