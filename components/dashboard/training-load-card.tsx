@@ -17,6 +17,7 @@ export interface TrainingLoadCardData {
   atl: number | null;
   tsb: number | null; // [Certo] TSB = CTL - ATL, real (Intervals.icu), não aproximação
   history: TrainingLoadPoint[];
+  acwrStatus?: string;
 }
 
 /**
