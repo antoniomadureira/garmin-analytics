@@ -903,6 +903,63 @@ export class FreddyDataService {
    * relativa das atividades desse dia (não testado formalmente, mas é a
    * única leitura coerente com o texto real observado).
    */
+  /**
+   * [Certo] Usa summarizedActivity_* (cobertura 2016+, confirmada) para
+   * encontrar o melhor tempo real já feito perto de cada distância-alvo
+   * (5K/10K/Meia/Maratona), dentro de uma tolerância — não exige a
+   * distância exata, porque corridas reais raramente batem 5.00km certos.
+   * [Suposição] Tolerâncias (±6-8%) são uma escolha razoável minha, não
+   * uma convenção oficial — uma corrida de 5.3km entra como "5K", o que
+   * pode não ser o que o utilizador consideraria um recorde de 5K "puro".
+   */
+  async getPersonalRecords(): Promise<
+    { label: string; targetKm: number; distanceKm: number; durationSec: number; date: string; paceMinPerKm: number }[]
+  > {
+    if (!this.client.queryRawText) {
+      throw new Error("Este client não implementa queryRawText — necessário para os recordes pessoais.");
+    }
+    const text = await this.client.queryRawText({
+      metrics: [SummarizedActivityMetrics.distanceM, SummarizedActivityMetrics.durationSec],
+      start: "2016-01-01",
+      end: new Date().toISOString().slice(0, 10),
+    });
+    const distByDate = extractValuesByDate(text, SummarizedActivityMetrics.distanceM);
+    const durByDate = extractValuesByDate(text, SummarizedActivityMetrics.durationSec);
+
+    const candidates: { date: string; distanceKm: number; durationSec: number }[] = [];
+    for (const [date, distances] of distByDate) {
+      const durations = durByDate.get(date) ?? [];
+      distances.forEach((distM, i) => {
+        candidates.push({ date, distanceKm: distM / 1000, durationSec: durations[i] ?? 0 });
+      });
+    }
+
+    const targets = [
+      { label: "5 km", km: 5, tolerance: 0.08 },
+      { label: "10 km", km: 10, tolerance: 0.06 },
+      { label: "Meia Maratona", km: 21.0975, tolerance: 0.05 },
+      { label: "Maratona", km: 42.195, tolerance: 0.05 },
+    ];
+
+    return targets
+      .map((t) => {
+        const matches = candidates.filter(
+          (c) => c.distanceKm >= t.km * (1 - t.tolerance) && c.distanceKm <= t.km * (1 + t.tolerance) && c.durationSec > 0
+        );
+        const best = matches.reduce((b, c) => (!b || c.durationSec < b.durationSec ? c : b), matches[0]);
+        if (!best) return null;
+        return {
+          label: t.label,
+          targetKm: t.km,
+          distanceKm: roundTo(best.distanceKm, 2),
+          durationSec: best.durationSec,
+          date: best.date,
+          paceMinPerKm: roundTo(best.durationSec / 60 / best.distanceKm, 2),
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+  }
+
   async getRecentActivities(days = 30): Promise<
     { date: string; distanceKm: number; durationSec: number; paceMinPerKm: number; elevationGainM: number | null }[]
   > {
