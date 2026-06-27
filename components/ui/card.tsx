@@ -1,17 +1,20 @@
-import { ReactNode } from "react";
+import { ReactNode, CSSProperties } from "react";
 import clsx from "clsx";
 
 export function Card({
   children,
   className,
   glow,
+  style,
 }: {
   children: ReactNode;
   className?: string;
   glow?: "emerald" | "amber" | "red" | "cyan" | "none";
+  style?: CSSProperties;
 }) {
   return (
     <div
+      style={style}
       className={clsx(
         "rounded-xl border border-slate-800/80 bg-slate-900/50 p-5 shadow-lg backdrop-blur-sm",
         "transition-colors hover:border-slate-700",

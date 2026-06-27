@@ -45,7 +45,7 @@ const TILE_COLORS = ["#22d3ee", "#94a3b8", "#a78bfa", "#fb923c", "#34d399", "#fb
 export function RunningStatsTiles({ data }: { data: RunningStatsData }) {
   const tiles = [
     { label: "Esta Semana", value: fmtKm(data.thisWeekKm) },
-    { label: "Semana Anterior", value: fmtKm(data.lastWeekKm) },
+    { label: "Sem. Anterior", value: fmtKm(data.lastWeekKm) },
     { label: "Média Semanal", value: fmtKm(data.avgWeekKm) },
     { label: "Melhor Semana", value: fmtKm(data.bestWeekKm), highlight: true },
     { label: "Total YTD", value: fmtKm(data.totalYtdKm) },
@@ -63,7 +63,7 @@ export function RunningStatsTiles({ data }: { data: RunningStatsData }) {
               t.highlight ? "border-orange-500 bg-orange-950/30 shadow-lg shadow-orange-950/40" : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
             }`}
           >
-            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide" style={{ color }}>
+            <div className="mb-2 flex items-center gap-1.5 whitespace-nowrap text-[10px] font-medium uppercase tracking-wide" style={{ color }}>
               <Icon size={12} />
               {t.label}
             </div>

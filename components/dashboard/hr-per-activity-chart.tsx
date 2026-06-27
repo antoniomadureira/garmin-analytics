@@ -13,9 +13,9 @@ export function HrPerActivityChart({ data }: { data: HrPoint[] }) {
   return (
     <Card>
       <CardTitle>Frequência Cardíaca por Corrida</CardTitle>
-      <div className="h-64">
+      <div className="h-56">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 50, left: 0 }}>
+          <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="grad-hr-activity" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#fb7185" stopOpacity={0.35} />
@@ -23,15 +23,7 @@ export function HrPerActivityChart({ data }: { data: HrPoint[] }) {
               </linearGradient>
             </defs>
             <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
-            <XAxis
-              dataKey="name"
-              tick={{ fontSize: 9, fill: "#64748b" }}
-              axisLine={false}
-              tickLine={false}
-              angle={-35}
-              textAnchor="end"
-              interval={0}
-            />
+            <XAxis dataKey="name" tick={false} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} width={32} domain={[80, "auto"]} />
             <Tooltip
               contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", fontSize: 12 }}
