@@ -752,6 +752,43 @@ export class FreddyDataService {
     };
   }
 
+  /**
+   * [Certo] FC por atividade (nome real, não data) — substitui o anterior
+   * getActivityPaceHrHistory, que misturava pace (não fazia sentido nesta
+   * página). activity_activityName é texto, não escalar — usa um extrator
+   * próprio em vez de extractValuesByDate (numérico).
+   */
+  async getActivityHrHistory(days = 35): Promise<
+    { date: string; name: string; avgHr: number | null; maxHr: number | null; minHr: number | null }[]
+  > {
+    if (!this.client.queryRawText) {
+      throw new Error("Este client não implementa queryRawText — necessário para o histórico de FC.");
+    }
+    const text = await this.client.queryRawText({
+      metrics: [RunActivityMetrics.activityName, RunActivityMetrics.avgHr, RunActivityMetrics.maxHr],
+      days,
+    });
+    const namesByDate = extractStringValuesByDate(text, RunActivityMetrics.activityName);
+    const avgHrByDate = extractValuesByDate(text, RunActivityMetrics.avgHr);
+    const maxHrByDate = extractValuesByDate(text, RunActivityMetrics.maxHr);
+
+    const out: { date: string; name: string; avgHr: number | null; maxHr: number | null; minHr: number | null }[] = [];
+    for (const [date, names] of namesByDate) {
+      const avgs = avgHrByDate.get(date) ?? [];
+      const maxs = maxHrByDate.get(date) ?? [];
+      names.forEach((name, i) => {
+        out.push({
+          date,
+          name,
+          avgHr: avgs[i] ?? null,
+          maxHr: maxs[i] ?? null,
+          minHr: null, // [TODO] activity_* não tem FC mínima por atividade — só a média e a máxima
+        });
+      });
+    }
+    return out.sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+
   async getHeartRateWeekly(days = 7): Promise<{
     restingToday: number | null;
     maxThisWeek: number | null;
@@ -850,6 +887,132 @@ export class FreddyDataService {
    * dados diários, evitando uma chamada ao servidor por cada clique no
    * seletor de período.
    */
+  /**
+   * [Certo] Estatísticas agregadas para a página de Corrida — reutiliza a
+   * mesma combinação de fontes validada (activity_* recente +
+   * summarizedActivity_* histórico, elevação /100), mas inclui também
+   * contagem de atividades e elevação, e separadamente o total histórico
+   * completo (consulta extra, mais pesada, só para o número "Total Histórico").
+   */
+  async getRunningStatsOverview(): Promise<{
+    thisWeekKm: number;
+    lastWeekKm: number;
+    avgWeekKm: number;
+    bestWeekKm: number;
+    totalYtdKm: number;
+    totalAllTimeKm: number;
+    weeklyVolume: { weekLabel: string; km: number }[]; // últimas 18 semanas
+    monthlyVolume: { month: string; km: number }[]; // últimos 12 meses
+    weeklyRunCount: { weekLabel: string; count: number }[];
+    weeklyElevation: { weekLabel: string; m: number }[];
+  }> {
+    if (!this.client.queryRawText) {
+      throw new Error("Este client não implementa queryRawText — necessário para as estatísticas de corrida.");
+    }
+    const end = new Date();
+    const start18w = new Date(end);
+    start18w.setDate(start18w.getDate() - 18 * 7);
+    const startStr = start18w.toISOString().slice(0, 10);
+    const endStr = end.toISOString().slice(0, 10);
+
+    const [summarizedText, recentText, allTimeText] = await Promise.all([
+      this.client.queryRawText({
+        metrics: [SummarizedActivityMetrics.distanceM, SummarizedActivityMetrics.elevationGainM],
+        start: startStr,
+        end: endStr,
+      }),
+      this.client.queryRawText({
+        metrics: [RunActivityMetrics.distanceM, RunActivityMetrics.elevationGainM],
+        start: startStr,
+        end: endStr,
+      }),
+      this.client.queryRawText({
+        metrics: [SummarizedActivityMetrics.distanceM],
+        start: "2016-01-01",
+        end: endStr,
+      }),
+    ]);
+
+    const recentDist = extractValuesByDate(recentText, RunActivityMetrics.distanceM);
+    const recentElev = extractValuesByDate(recentText, RunActivityMetrics.elevationGainM);
+    const summDist = extractValuesByDate(summarizedText, SummarizedActivityMetrics.distanceM);
+    const summElev = extractValuesByDate(summarizedText, SummarizedActivityMetrics.elevationGainM);
+    const recentDates = new Set(recentDist.keys());
+
+    const byDate = new Map<string, { km: number; elevM: number; count: number }>();
+    for (const [date, vals] of recentDist) {
+      byDate.set(date, { km: sum(vals) / 1000, elevM: sum(recentElev.get(date) ?? []), count: vals.length });
+    }
+    for (const [date, vals] of summDist) {
+      if (recentDates.has(date)) continue;
+      byDate.set(date, { km: sum(vals) / 1000, elevM: sum(summElev.get(date) ?? []) / 100, count: vals.length });
+    }
+
+    // Total histórico completo (consulta extra, só distância)
+    const allTimeDist = extractValuesByDate(allTimeText, SummarizedActivityMetrics.distanceM);
+    let totalAllTimeKm = 0;
+    for (const vals of allTimeDist.values()) totalAllTimeKm += sum(vals) / 1000;
+    // somar também o período recente que pode não estar no summarized (sobreposição), evitando dupla contagem por data
+    for (const [date, vals] of recentDist) {
+      if (!allTimeDist.has(date)) totalAllTimeKm += sum(vals) / 1000;
+    }
+
+    // Agrupar por semana (segunda a domingo) e por mês
+    function isoWeekStart(d: Date): string {
+      const date = new Date(d);
+      const day = (date.getDay() + 6) % 7; // 0 = segunda
+      date.setDate(date.getDate() - day);
+      return date.toISOString().slice(0, 10);
+    }
+
+    const weekBuckets = new Map<string, { km: number; elevM: number; count: number }>();
+    const monthBuckets = new Map<string, number>();
+    let totalYtdKm = 0;
+    const ytdStart = `${end.getFullYear()}-01-01`;
+
+    for (const [date, d] of byDate) {
+      const weekKey = isoWeekStart(new Date(`${date}T00:00:00`));
+      const wb = weekBuckets.get(weekKey) ?? { km: 0, elevM: 0, count: 0 };
+      wb.km += d.km;
+      wb.elevM += d.elevM;
+      wb.count += d.count;
+      weekBuckets.set(weekKey, wb);
+
+      const monthKey = date.slice(0, 7);
+      monthBuckets.set(monthKey, (monthBuckets.get(monthKey) ?? 0) + d.km);
+
+      if (date >= ytdStart) totalYtdKm += d.km;
+    }
+
+    const sortedWeeks = [...weekBuckets.entries()].sort(([a], [b]) => (a < b ? -1 : 1));
+    const sortedMonths = [...monthBuckets.entries()].sort(([a], [b]) => (a < b ? -1 : 1));
+
+    const weekLabel = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+    const weeklyVolume = sortedWeeks.map(([wk, d]) => ({ weekLabel: weekLabel(wk), km: roundTo(d.km, 1) }));
+    const weeklyRunCount = sortedWeeks.map(([wk, d]) => ({ weekLabel: weekLabel(wk), count: d.count }));
+    const weeklyElevation = sortedWeeks.map(([wk, d]) => ({ weekLabel: weekLabel(wk), m: Math.round(d.elevM) }));
+    const monthlyVolume = sortedMonths.map(([m, km]) => ({ month: m, km: roundTo(km, 1) }));
+
+    const thisWeekKm = sortedWeeks.length ? roundTo(sortedWeeks[sortedWeeks.length - 1][1].km, 1) : 0;
+    const lastWeekKm = sortedWeeks.length > 1 ? roundTo(sortedWeeks[sortedWeeks.length - 2][1].km, 1) : 0;
+    const weekKms = sortedWeeks.map(([, d]) => d.km);
+    const avgWeekKm = weekKms.length ? roundTo(weekKms.reduce((a, b) => a + b, 0) / weekKms.length, 1) : 0;
+    const bestWeekKm = weekKms.length ? roundTo(Math.max(...weekKms), 1) : 0;
+
+    return {
+      thisWeekKm,
+      lastWeekKm,
+      avgWeekKm,
+      bestWeekKm,
+      totalYtdKm: roundTo(totalYtdKm, 1),
+      totalAllTimeKm: roundTo(totalAllTimeKm, 1),
+      weeklyVolume,
+      monthlyVolume,
+      weeklyRunCount,
+      weeklyElevation,
+    };
+  }
+
   async getDailyTrend(): Promise<{ date: string; distanceKm: number; durationH: number; caloriesKcal: number }[]> {
     if (!this.client.queryRawText) {
       throw new Error("Este client não implementa queryRawText — necessário para a tendência diária.");
@@ -1352,6 +1515,29 @@ function extractValuesByDate(text: string, metricName: string): Map<string, numb
     if (valueMatch && currentDate) {
       const arr = result.get(currentDate) ?? [];
       arr.push(Number(valueMatch[1]));
+      result.set(currentDate, arr);
+    }
+  }
+  return result;
+}
+
+/** Igual a extractValuesByDate, mas para campos de texto (ex: nome da atividade), não numéricos. */
+function extractStringValuesByDate(text: string, metricName: string): Map<string, string[]> {
+  const lines = text.split("\n");
+  const result = new Map<string, string[]>();
+  let currentDate: string | null = null;
+  const valueRe = new RegExp(`^\\s*${metricName}:\\s*(.+?)\\s*\\(`); // texto até antes de "(Garmin)" etc.
+
+  for (const line of lines) {
+    const dateMatch = line.match(YOY_DATE_HEADER_RE);
+    if (dateMatch) {
+      currentDate = dateMatch[1];
+      continue;
+    }
+    const valueMatch = line.match(valueRe);
+    if (valueMatch && currentDate) {
+      const arr = result.get(currentDate) ?? [];
+      arr.push(valueMatch[1].trim());
       result.set(currentDate, arr);
     }
   }

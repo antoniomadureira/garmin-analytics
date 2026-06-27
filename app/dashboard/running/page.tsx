@@ -1,6 +1,14 @@
 import { DashboardNav } from "@/components/dashboard/nav";
 import { MonthlyTrendChart, type DailyTrendPoint } from "@/components/dashboard/monthly-trend-chart";
-import { RecentActivitiesList, type RecentActivity } from "@/components/dashboard/recent-activities-list";
+// import { RecentActivitiesList, type RecentActivity } from "@/components/dashboard/recent-activities-list";
+import {
+  RunningStatsTiles,
+  WeeklyVolumeChart,
+  MonthlyVolumeMiniChart,
+  WeeklyRunCountMiniChart,
+  WeeklyElevationChart,
+  type RunningStatsData,
+} from "@/components/dashboard/running-stats-charts";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 
 function roundTo(v: number, d: number) {
@@ -23,15 +31,27 @@ async function loadMonthly(service: Awaited<ReturnType<typeof getFreddyDataServi
   }
 }
 
-async function loadActivities(service: Awaited<ReturnType<typeof getFreddyDataService>>): Promise<{ data: RecentActivity[]; isReal: boolean; error?: string }> {
-  const mock: RecentActivity[] = [
-    { date: "2026-06-24", distanceKm: 12.3, durationSec: 4009, paceMinPerKm: 5.45, elevationGainM: 171 },
-    { date: "2026-06-23", distanceKm: 11.3, durationSec: 3262, paceMinPerKm: 4.82, elevationGainM: 40 },
-    { date: "2026-06-21", distanceKm: 10.1, durationSec: 2406, paceMinPerKm: 3.98, elevationGainM: 114 },
-  ];
+// [Certo] Lista de atividades escondida a pedido — código mantido, não removido,
+// para ser reativado mais tarde sem reescrever do zero.
+// async function loadActivities(...) { ... }
+
+async function loadRunningStats(service: Awaited<ReturnType<typeof getFreddyDataService>> | null, connectError?: string): Promise<{ data: RunningStatsData; isReal: boolean; error?: string }> {
+  const mock: RunningStatsData = {
+    thisWeekKm: 43,
+    lastWeekKm: 51,
+    avgWeekKm: 63,
+    bestWeekKm: 83,
+    totalYtdKm: 1609.4,
+    totalAllTimeKm: 16142,
+    weeklyVolume: Array.from({ length: 18 }, (_, i) => ({ weekLabel: `S${i + 1}`, km: 40 + Math.round(Math.sin(i) * 25) })),
+    monthlyVolume: Array.from({ length: 12 }, (_, i) => ({ month: `2026-${String((i % 12) + 1).padStart(2, "0")}`, km: 150 + Math.round(Math.cos(i) * 60) })),
+    weeklyRunCount: Array.from({ length: 18 }, (_, i) => ({ weekLabel: `S${i + 1}`, count: 3 + (i % 5) })),
+    weeklyElevation: Array.from({ length: 18 }, (_, i) => ({ weekLabel: `S${i + 1}`, m: 400 + Math.round(Math.sin(i) * 300) })),
+  };
+  if (!service) return { data: mock, isReal: false, error: connectError };
   try {
-    const activities = await service.getRecentActivities(30);
-    return { data: activities, isReal: true };
+    const stats = await service.getRunningStatsOverview();
+    return { data: stats, isReal: true };
   } catch (err) {
     return { data: mock, isReal: false, error: String(err) };
   }
@@ -51,18 +71,10 @@ export default async function RunningPage() {
     d.setDate(d.getDate() - (29 - i));
     return { date: d.toISOString().slice(0, 10), distanceKm: km, durationH: roundTo(km / 10, 1), caloriesKcal: Math.round(km * 65) };
   });
-  const mockActivities: RecentActivity[] = [
-    { date: "2026-06-24", distanceKm: 12.3, durationSec: 4009, paceMinPerKm: 5.45, elevationGainM: 171 },
-    { date: "2026-06-23", distanceKm: 11.3, durationSec: 3262, paceMinPerKm: 4.82, elevationGainM: 40 },
-    { date: "2026-06-21", distanceKm: 10.1, durationSec: 2406, paceMinPerKm: 3.98, elevationGainM: 114 },
-  ];
 
-  const [monthlyResult, activitiesResult] = service
-    ? await Promise.all([loadMonthly(service), loadActivities(service)])
-    : [
-        { data: mockMonthly, isReal: false, error: connectError },
-        { data: mockActivities, isReal: false, error: connectError },
-      ];
+  const [monthlyResult, statsResult] = service
+    ? await Promise.all([loadMonthly(service), loadRunningStats(service, connectError)])
+    : [{ data: mockMonthly, isReal: false, error: connectError }, await loadRunningStats(null, connectError)];
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -79,14 +91,26 @@ export default async function RunningPage() {
           </p>
         )}
 
-        <RecentActivitiesList activities={activitiesResult.data} />
-        {activitiesResult.isReal ? (
+        <RunningStatsTiles data={statsResult.data} />
+
+        <WeeklyVolumeChart data={statsResult.data.weeklyVolume} />
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <MonthlyVolumeMiniChart data={statsResult.data.monthlyVolume} />
+          <WeeklyRunCountMiniChart data={statsResult.data.weeklyRunCount} />
+        </div>
+
+        <WeeklyElevationChart data={statsResult.data.weeklyElevation} />
+
+        {statsResult.isReal ? (
           <p className="text-[11px] text-emerald-500">● dados reais (Freddy)</p>
         ) : (
-          <p className="text-[11px] text-amber-500" title={activitiesResult.error}>
-            ● dados de exemplo {activitiesResult.error ? `(${activitiesResult.error.slice(0, 80)}…)` : ""}
+          <p className="text-[11px] text-amber-500" title={statsResult.error}>
+            ● dados de exemplo {statsResult.error ? `(${statsResult.error.slice(0, 80)}…)` : ""}
           </p>
         )}
+
+        {/* <RecentActivitiesList activities={...} /> — escondido a pedido, reativar mais tarde */}
       </main>
     </div>
   );

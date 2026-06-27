@@ -1,6 +1,7 @@
 import { Footprints, Target, TrendingUp } from "lucide-react";
 import { DashboardNav } from "@/components/dashboard/nav";
 import { StatTile } from "@/components/ui/stat-tile";
+import { Card } from "@/components/ui/card";
 import { TrendLineChart } from "@/components/dashboard/trend-line-chart";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 
@@ -63,6 +64,32 @@ export default async function StepsPage() {
           <StatTile icon={<Target size={14} />} label="Meta" value={data.todayGoal?.toLocaleString("pt-PT") ?? null} sublabel="Hoje" accent="#22d3ee" />
           <StatTile icon={<TrendingUp size={14} />} label="Média" value={data.avgSteps7d?.toLocaleString("pt-PT") ?? null} sublabel="7 dias" accent="#a78bfa" />
         </div>
+
+        {(() => {
+          // [Certo] uds_dailyStepGoal é a meta real do Garmin (já vinha de getStepsWeekly).
+          // [Suposição] 10000 só é usado quando não há meta real disponível.
+          const goal = data.todayGoal ?? 10000;
+          const steps = data.todaySteps ?? 0;
+          const pct = Math.min(100, Math.round((steps / goal) * 100));
+          const reached = steps >= goal;
+          return (
+            <Card>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Objetivo Diário de Passos</span>
+                {reached && <span className="text-xs font-medium text-emerald-400">✓ Objetivo atingido!</span>}
+              </div>
+              <div className="mb-2 text-sm text-slate-300">
+                {steps.toLocaleString("pt-PT")} / {goal.toLocaleString("pt-PT")} passos
+              </div>
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </Card>
+          );
+        })()}
 
         <TrendLineChart
           title="Passos — Últimos 7 Dias"

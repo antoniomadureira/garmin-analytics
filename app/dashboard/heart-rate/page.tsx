@@ -1,7 +1,8 @@
-import { Heart, TrendingUp, Zap } from "lucide-react";
+import { Heart, TrendingUp, Zap, TrendingDown } from "lucide-react";
 import { DashboardNav } from "@/components/dashboard/nav";
 import { StatTile } from "@/components/ui/stat-tile";
 import { TrendLineChart } from "@/components/dashboard/trend-line-chart";
+import { HrPerActivityChart } from "@/components/dashboard/hr-per-activity-chart";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 
 const WEEKDAY_PT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -14,6 +15,12 @@ interface HeartRatePageData {
   maxThisWeek: number | null;
   minToday: number | null;
   trend: { label: string; resting: number | null; max: number | null }[];
+}
+
+interface ActivityHrData {
+  lowestAvgHr: number | null;
+  highestMaxHr: number | null;
+  history: { name: string; avgHr: number | null; maxHr: number | null }[];
 }
 
 async function loadHeartRate(): Promise<{ data: HeartRatePageData; isReal: boolean; error?: string }> {
@@ -31,7 +38,6 @@ async function loadHeartRate(): Promise<{ data: HeartRatePageData; isReal: boole
       { label: "Qui", resting: 56, max: 160 },
     ],
   };
-
   try {
     const service = await getFreddyDataService();
     const weekly = await service.getHeartRateWeekly(7);
@@ -50,8 +56,41 @@ async function loadHeartRate(): Promise<{ data: HeartRatePageData; isReal: boole
   }
 }
 
+async function loadActivityHr(): Promise<{ data: ActivityHrData; isReal: boolean; error?: string }> {
+  const mock: ActivityHrData = {
+    lowestAvgHr: 128,
+    highestMaxHr: 178,
+    history: [
+      { name: "Corrida fácil", avgHr: 132, maxHr: 148 },
+      { name: "Treino de séries", avgHr: 151, maxHr: 178 },
+      { name: "Longo de domingo", avgHr: 138, maxHr: 160 },
+      { name: "Corrida de São João", avgHr: 139, maxHr: 153 },
+    ],
+  };
+  try {
+    const service = await getFreddyDataService();
+    const history = await service.getActivityHrHistory(35);
+    if (history.length === 0) throw new Error("Sem atividades com FC no período pedido.");
+    const avgs = history.map((h) => h.avgHr).filter((v): v is number => v !== null);
+    const maxs = history.map((h) => h.maxHr).filter((v): v is number => v !== null);
+    return {
+      data: {
+        lowestAvgHr: avgs.length ? Math.min(...avgs) : null,
+        highestMaxHr: maxs.length ? Math.max(...maxs) : null,
+        history: history.map((h) => ({ name: h.name, avgHr: h.avgHr, maxHr: h.maxHr })),
+      },
+      isReal: true,
+    };
+  } catch (err) {
+    return { data: mock, isReal: false, error: String(err) };
+  }
+}
+
 export default async function HeartRatePage() {
-  const { data, isReal, error } = await loadHeartRate();
+  const [{ data, isReal, error }, { data: activityData, isReal: activityIsReal, error: activityError }] = await Promise.all([
+    loadHeartRate(),
+    loadActivityHr(),
+  ]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -79,6 +118,23 @@ export default async function HeartRatePage() {
         ) : (
           <p className="text-[11px] text-amber-500" title={error}>
             ● dados de exemplo {error ? `(${error.slice(0, 80)}…)` : ""}
+          </p>
+        )}
+
+        <h2 className="pt-2 text-sm font-medium text-slate-400">FC nas Atividades</h2>
+
+        <div className="grid grid-cols-2 gap-3">
+          <StatTile icon={<TrendingDown size={14} />} label="FC Mais Baixa" value={activityData.lowestAvgHr} unit="bpm" sublabel="Média mais baixa entre corridas" accent="#22d3ee" />
+          <StatTile icon={<TrendingUp size={14} />} label="FC Mais Alta" value={activityData.highestMaxHr} unit="bpm" sublabel="Máxima mais alta entre corridas" accent="#fb7185" />
+        </div>
+
+        <HrPerActivityChart data={activityData.history} />
+
+        {activityIsReal ? (
+          <p className="text-[11px] text-emerald-500">● dados reais (Freddy)</p>
+        ) : (
+          <p className="text-[11px] text-amber-500" title={activityError}>
+            ● dados de exemplo {activityError ? `(${activityError.slice(0, 80)}…)` : ""}
           </p>
         )}
       </main>
