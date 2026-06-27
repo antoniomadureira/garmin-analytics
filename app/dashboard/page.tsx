@@ -10,16 +10,6 @@ import { StatTile } from "@/components/ui/stat-tile";
 import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
 import { Heart, Zap, Moon, Activity as ActivityIcon, Gauge } from "lucide-react";
 
-// =============================================================================
-// [Provável] Tentamos dados reais para Readiness, TrainingLoad e VO2 Max
-// (os 3 mappers já confirmados). Os restantes cards continuam com dados de
-// exemplo — não foi suposição minha, é o ponto onde a integração real
-// chega agora. Se a chamada falhar (ex: Freddy não ligado, ou shape do
-// content ainda não confirmado — ver data-adapter.ts), cada card cai para
-// o seu mock individual, com um aviso visível, em vez de a página toda
-// rebentar ou fingir sucesso.
-// =============================================================================
-
 async function loadReadiness(service: Awaited<ReturnType<typeof getFreddyDataService>> | null, connectError?: string): Promise<{ data: ReadinessCardData; isReal: boolean; error?: string }> {
   const mock: ReadinessCardData = {
     compositeScore: 78,
@@ -40,7 +30,7 @@ async function loadReadiness(service: Awaited<ReturnType<typeof getFreddyDataSer
   try {
     const [composed, readinessEntries] = await Promise.all([
       service.getComposedReadiness(),
-      service.getTrainingReadiness(10), // [Certo] janela maior — este metric tem atraso de sync confirmado (até vários dias)
+      service.getTrainingReadiness(10),
     ]);
     const latest = readinessEntries.reduce(
       (best, cur) => (!best || cur.date > best.date ? cur : best),
@@ -89,17 +79,17 @@ async function loadTrainingLoad(service: Awaited<ReturnType<typeof getFreddyData
     const [loadEntries, vo2Entries, wellness] = await Promise.all([
       service.getTrainingLoadSummary(7).catch(() => []),
       service.getVo2MaxSummary(7).catch(() => []),
-      service.getWellnessWeekly(56), // [Certo] 8 semanas, real, sempre fresco (Intervals.icu)
+      service.getWellnessWeekly(56),
     ]);
     const load = loadEntries.reduce((best, cur) => (!best || cur.date > best.date ? cur : best), loadEntries[0]);
     const vo2 = vo2Entries.reduce((best, cur) => (!best || cur.date > best.date ? cur : best), vo2Entries[0]);
-    const latestWellness = wellness[wellness.length - 1]; // já vem ordenado por data ascendente
+    const latestWellness = wellness[wellness.length - 1];
     if (!latestWellness) throw new Error("Sem registo de wellness (Intervals.icu) no período pedido.");
 
     return {
       data: {
         vo2Max: vo2?.canonicalValue ?? mock.vo2Max,
-        trainingStatusLabel: load?.trainingStatus || mock.trainingStatusLabel, // [TODO] trainingStatus vazio até confirmar trainingHistory_* isolado
+        trainingStatusLabel: load?.trainingStatus || mock.trainingStatusLabel,
         ctl: latestWellness.ctl,
         atl: latestWellness.atl,
         tsb: latestWellness.tsb,
@@ -173,7 +163,7 @@ async function loadRecoveryInsights(service: Awaited<ReturnType<typeof getFreddy
     const avgStress = latest.avgStress !== null ? Math.round(latest.avgStress) : null;
     return {
       data: {
-        recoveryTimeHours: null, // [Certo] depende de trainingReadiness_score, que tem atraso de sync confirmado — mostrar null em vez de inventar um valor sob a bandeira "dados reais"
+        recoveryTimeHours: null,
         bodyBatteryMax: latest.max ?? mock.bodyBatteryMax,
         bodyBatteryMin: latest.min ?? mock.bodyBatteryMin,
         avgStress: avgStress ?? mock.avgStress,
@@ -189,22 +179,14 @@ async function loadRecoveryInsights(service: Awaited<ReturnType<typeof getFreddy
   }
 }
 
-/**
- * [Suposição] O radar "Estado de Forma" não tem uma única métrica
- * canónica no Freddy — é uma normalização heurística minha a partir de
- * sinais já confirmados (score de readiness, VO2 Max, volume semanal,
- * FC média semanal). Os divisores de normalização (80 para VO2, 60km
- * para volume, etc.) são estimativas razoáveis para um corredor amador
- * de longa distância, não constantes oficiais — ajustar livremente.
- */
 function buildRadarData(vo2Max: number, readinessScore: number, weeklyKm: number, weeklyHrAvg: number | null): RadarDimension[] {
   return [
     { dimension: "Fitness", value: Math.min(100, Math.round((vo2Max / 80) * 100)) },
     { dimension: "Frescura", value: readinessScore },
     { dimension: "Volume", value: Math.min(100, Math.round((weeklyKm / 60) * 100)) },
-    { dimension: "Pace", value: 65 }, // [TODO] precisa de avgPaceMinPerKm real, não disponível nos loaders atuais
+    { dimension: "Pace", value: 65 },
     { dimension: "FC", value: weeklyHrAvg ? Math.max(0, Math.min(100, Math.round(100 - (weeklyHrAvg - 120)))) : 70 },
-    { dimension: "Elevação", value: 54 }, // [TODO] precisa do total de elevação semanal
+    { dimension: "Elevação", value: 54 },
   ];
 }
 
@@ -224,7 +206,7 @@ async function loadYoyKpis(service: Awaited<ReturnType<typeof getFreddyDataServi
     const prevYearStart = `${today.getFullYear() - 1}-01-01`;
     const prevYearEnd = `${today.getFullYear() - 1}-${yearEnd.slice(5)}`;
     const kpis = await service.getYearOverYearKpis(yearStart, yearEnd, prevYearStart, prevYearEnd);
-    const unitDivide: Record<string, number> = { Distância: 1000, Tempo: 3600 }; // metros->km, segundos->horas
+    const unitDivide: Record<string, number> = { Distância: 1000, Tempo: 3600 };
     return {
       data: kpis.map((k) => {
         const divisor = unitDivide[k.label] ?? 1;
@@ -251,7 +233,6 @@ async function loadGlanceExtra(service: Awaited<ReturnType<typeof getFreddyDataS
   if (!service) return { data: mock, isReal: false };
   try {
     const hr = await service.getHeartRateWeekly(3);
-    // [Provável] HRV ainda não tem método dedicado — leitura direta via queryRawText, fora do FreddyDataService por simplicidade.
     return { data: { restingHr: hr.restingToday, hrvMs: null }, isReal: true };
   } catch (err) {
     return { data: mock, isReal: false, error: String(err) };
@@ -259,12 +240,6 @@ async function loadGlanceExtra(service: Awaited<ReturnType<typeof getFreddyDataS
 }
 
 export default async function DashboardPage() {
-  // [Certo] Uma única ligação MCP para a página toda — a versão anterior
-  // chamava getFreddyDataService() 5 vezes em separado (uma por loader),
-  // cada uma com handshake completo, o que disparou rate limiting real
-  // no servidor Freddy quando outras páginas (Sono, FC) também passaram
-  // a ligar-se. Esta abordagem evita isso: connect() corre uma vez,
-  // partilhado por todos os loaders em paralelo.
   let service: Awaited<ReturnType<typeof getFreddyDataService>> | null = null;
   let connectError: string | undefined;
   try {
@@ -286,7 +261,7 @@ export default async function DashboardPage() {
     trainingLoadResult.data.vo2Max,
     readinessResult.data.compositeScore ?? readinessResult.data.garminScore ?? 50,
     runningResult.data.weeklyDistanceKm,
-    null // [TODO] FC média semanal ainda não recolhida separadamente
+    null
   );
 
   const tsb = trainingLoadResult.data.tsb;
