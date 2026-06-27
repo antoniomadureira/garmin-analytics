@@ -1,4 +1,4 @@
-﻿import { DashboardNav } from "@/components/dashboard/nav";
+import { DashboardNav } from "@/components/dashboard/nav";
 import { ReadinessCard, type ReadinessCardData } from "@/components/dashboard/readiness-card";
 import { TrainingLoadCard, type TrainingLoadCardData } from "@/components/dashboard/training-load-card";
 import { RunningSummaryCard, type RunningSummaryCardData } from "@/components/dashboard/running-summary-card";
