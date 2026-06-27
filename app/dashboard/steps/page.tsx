@@ -61,7 +61,7 @@ export default async function StepsPage() {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatTile icon={<Footprints size={14} />} label="Passos Hoje" value={data.todaySteps?.toLocaleString("pt-PT") ?? null} sublabel="Hoje" accent="#34d399" />
-          <StatTile icon={<Target size={14} />} label="Meta" value={data.todayGoal?.toLocaleString("pt-PT") ?? null} sublabel="Hoje" accent="#22d3ee" />
+          <StatTile icon={<Target size={14} />} label="Meta" value={(data.todayGoal ?? 10000).toLocaleString("pt-PT")} sublabel={data.todayGoal ? "Hoje" : "Hoje (padrão)"} accent="#22d3ee" />
           <StatTile icon={<TrendingUp size={14} />} label="Média" value={data.avgSteps7d?.toLocaleString("pt-PT") ?? null} sublabel="7 dias" accent="#a78bfa" />
         </div>
 

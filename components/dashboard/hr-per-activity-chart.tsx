@@ -13,9 +13,9 @@ export function HrPerActivityChart({ data }: { data: HrPoint[] }) {
   return (
     <Card>
       <CardTitle>Frequência Cardíaca por Corrida</CardTitle>
-      <div className="h-56">
+      <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 24, left: 0 }}>
+          <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 50, left: 0 }}>
             <defs>
               <linearGradient id="grad-hr-activity" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#fb7185" stopOpacity={0.35} />
@@ -28,18 +28,17 @@ export function HrPerActivityChart({ data }: { data: HrPoint[] }) {
               tick={{ fontSize: 9, fill: "#64748b" }}
               axisLine={false}
               tickLine={false}
-              angle={-30}
+              angle={-35}
               textAnchor="end"
-              height={50}
               interval={0}
             />
             <YAxis tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} width={32} domain={[80, "auto"]} />
             <Tooltip
               contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", fontSize: 12 }}
               labelStyle={{ color: "#cbd5e1" }}
-              formatter={(value: number, key: string) => [`${value} bpm`, key === "avgHr" ? "FC média" : "FC máxima"]}
+              formatter={(value: number) => [`${value} bpm`, "FC média"]}
             />
-            <Area type="monotone" dataKey="avgHr" stroke="#fb7185" strokeWidth={2} fill="url(#grad-hr-activity)" dot={{ r: 3, fill: "#fb7185", strokeWidth: 0 }} connectNulls name="avgHr" />
+            <Area type="monotone" dataKey="avgHr" stroke="#fb7185" strokeWidth={2} fill="url(#grad-hr-activity)" dot={{ r: 3, fill: "#fb7185", strokeWidth: 0 }} connectNulls />
           </AreaChart>
         </ResponsiveContainer>
       </div>

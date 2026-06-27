@@ -37,6 +37,11 @@ function fmtKm(v: number): string {
   return `${v.toLocaleString("pt-PT", { maximumFractionDigits: 0 })}km`;
 }
 
+import { Calendar, ChevronLeft, BarChart3, Star, Flag, Globe } from "lucide-react";
+
+const TILE_ICONS = [Calendar, ChevronLeft, BarChart3, Star, Flag, Globe];
+const TILE_COLORS = ["#22d3ee", "#94a3b8", "#a78bfa", "#fb923c", "#34d399", "#fbbf24"];
+
 export function RunningStatsTiles({ data }: { data: RunningStatsData }) {
   const tiles = [
     { label: "Esta Semana", value: fmtKm(data.thisWeekKm) },
@@ -48,17 +53,26 @@ export function RunningStatsTiles({ data }: { data: RunningStatsData }) {
   ];
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-      {tiles.map((t) => (
-        <div
-          key={t.label}
-          className={`rounded-xl border p-3 text-center ${
-            t.highlight ? "border-orange-500/50 bg-orange-950/30" : "border-slate-800 bg-slate-900/40"
-          }`}
-        >
-          <div className={`text-lg font-bold ${t.highlight ? "text-orange-400" : "text-slate-100"}`}>{t.value}</div>
-          <div className="text-[10px] uppercase tracking-wide text-slate-500">{t.label}</div>
-        </div>
-      ))}
+      {tiles.map((t, i) => {
+        const Icon = TILE_ICONS[i];
+        const color = t.highlight ? "#fb923c" : TILE_COLORS[i];
+        return (
+          <div
+            key={t.label}
+            className={`rounded-xl border p-3 transition ${
+              t.highlight ? "border-orange-500 bg-orange-950/30 shadow-lg shadow-orange-950/40" : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
+            }`}
+          >
+            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide" style={{ color }}>
+              <Icon size={12} />
+              {t.label}
+            </div>
+            <div className="text-xl font-bold" style={{ color: t.highlight ? "#fb923c" : "#f1f5f9" }}>
+              {t.value}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -102,7 +116,7 @@ export function MonthlyVolumeMiniChart({ data }: { data: { month: string; km: nu
               labelStyle={{ color: "#cbd5e1" }}
               formatter={(v: number) => [`${v} km`, "Distância"]}
             />
-            <Line type="monotone" dataKey="km" stroke="#fb923c" strokeWidth={2} dot={false} />
+            <Line type="linear" dataKey="km" stroke="#fb923c" strokeWidth={2} dot={{ r: 3, fill: "#fb923c", strokeWidth: 0 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
