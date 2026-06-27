@@ -49,7 +49,7 @@ export function RunningStatsTiles({ data }: { data: RunningStatsData }) {
     { label: "Média Semanal", value: fmtKm(data.avgWeekKm) },
     { label: "Melhor Semana", value: fmtKm(data.bestWeekKm), highlight: true },
     { label: "Total YTD", value: fmtKm(data.totalYtdKm) },
-    { label: "Total Histórico", value: fmtKm(data.totalAllTimeKm) },
+    { label: "Total (3 Anos)", value: fmtKm(data.totalAllTimeKm) },
   ];
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
@@ -82,7 +82,7 @@ export function WeeklyVolumeChart({ data }: { data: { weekLabel: string; km: num
     <Card>
       <CardTitle>Volume Semanal — 18 Semanas</CardTitle>
       <div className="h-44">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={176}>
           <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="weekLabel" tick={{ fontSize: 9, fill: "#64748b" }} axisLine={false} tickLine={false} />
@@ -106,7 +106,7 @@ export function MonthlyVolumeMiniChart({ data }: { data: { month: string; km: nu
     <Card>
       <CardTitle>Volume Mensal</CardTitle>
       <div className="h-40">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={160}>
           <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#64748b" }} axisLine={false} tickLine={false} />
@@ -129,7 +129,7 @@ export function WeeklyRunCountMiniChart({ data }: { data: { weekLabel: string; c
     <Card>
       <CardTitle>Corridas por Semana</CardTitle>
       <div className="h-40">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={160}>
           <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="weekLabel" tick={{ fontSize: 9, fill: "#64748b" }} axisLine={false} tickLine={false} />
@@ -152,7 +152,7 @@ export function WeeklyElevationChart({ data }: { data: { weekLabel: string; m: n
     <Card>
       <CardTitle>Elevação Acumulada Semanal</CardTitle>
       <div className="h-44">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={176}>
           <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="grad-elev-weekly" x1="0" y1="0" x2="0" y2="1">

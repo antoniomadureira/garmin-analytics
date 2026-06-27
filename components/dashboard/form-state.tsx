@@ -29,8 +29,8 @@ export function FormRadarCard({ data }: { data: RadarDimension[] }) {
   return (
     <Card>
       <CardTitle>Radar — Fitness, Frescura, Volume, Pace, FC, Elevação</CardTitle>
-      <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
+      <div>
+        <ResponsiveContainer width="100%" height={256}>
           <RadarChart data={data}>
             <PolarGrid stroke="#1e293b" strokeWidth={0.75} />
             <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11, fill: "#94a3b8" }} />

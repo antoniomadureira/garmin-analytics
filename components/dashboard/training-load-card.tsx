@@ -69,8 +69,8 @@ export function TrainingLoadCard({ data }: { data: TrainingLoadCardData }) {
           <span className="font-medium text-slate-200">{data.atl ?? "—"}</span>
         </div>
       </div>
-      <div className="mt-3 h-32">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="mt-3">
+        <ResponsiveContainer width="100%" height={130}>
           <LineChart data={data.history} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} width={36} />

@@ -3,6 +3,7 @@ import { DashboardNav } from "@/components/dashboard/nav";
 import { StatTile } from "@/components/ui/stat-tile";
 import { TrendLineChart } from "@/components/dashboard/trend-line-chart";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
+import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
 
 const WEEKDAY_PT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 function weekdayPt(isoDate: string): string {
@@ -120,13 +121,7 @@ export default async function SleepPage() {
           yDomain={[0, 12]}
         />
 
-        {isReal ? (
-          <p className="text-[11px] text-emerald-500">● dados reais (Freddy)</p>
-        ) : (
-          <p className="text-[11px] text-amber-500" title={error}>
-            ● dados de exemplo {error ? `(${error.slice(0, 80)}…)` : ""}
-          </p>
-        )}
+        <div className="flex justify-end"><DataFreshnessDot isReal={isReal} error={error} /></div>
       </main>
     </div>
   );

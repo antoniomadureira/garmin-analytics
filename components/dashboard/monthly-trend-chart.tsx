@@ -119,7 +119,7 @@ export function MonthlyTrendChart({ data }: { data: DailyTrendPoint[] }) {
       </div>
 
       <div className="h-52">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={208}>
           <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="grad-monthly" x1="0" y1="0" x2="0" y2="1">

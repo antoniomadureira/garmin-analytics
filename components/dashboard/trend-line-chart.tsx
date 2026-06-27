@@ -27,7 +27,7 @@ export function TrendLineChart({
     <Card>
       <CardTitle>{title}</CardTitle>
       <div style={{ height }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={height}>
           <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
             <defs>
               {series.map((s) => (

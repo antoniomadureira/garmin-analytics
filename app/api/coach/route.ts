@@ -18,11 +18,12 @@ interface ChatMessage {
 async function buildContextSummary(): Promise<string> {
   try {
     const service = await getFreddyDataService();
-    const [readinessEntries, loadEntries, running, wellness] = await Promise.all([
+    const [readinessEntries, loadEntries, running, wellness, composed] = await Promise.all([
       service.getTrainingReadiness(10),
       service.getTrainingLoadSummary(7),
       service.getWeeklyRunningSummary(7),
       service.getWellnessWeekly(7).catch(() => []),
+      service.getComposedReadiness().catch(() => null),
     ]);
     const latestReadiness = readinessEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), readinessEntries[0]);
     const latestLoad = loadEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), loadEntries[0]);
@@ -34,13 +35,16 @@ async function buildContextSummary(): Promise<string> {
       : 0;
 
     return [
+      composed && composed.compositeScore !== null
+        ? `[FONTE PRINCIPAL para "estou apto a treinar hoje", composto próprio de sinais frescos de hoje]: Score composto ${composed.compositeScore}/100. Recomendação base: "${composed.recommendation}". Sinais individuais: ${composed.signals.map((s) => `${s.label}: ${s.detail} (${s.status})`).join("; ")}. Este composto é uma média simples e transparente de sinais frescos (TSB, HRV, FC repouso, sono, stress) — NÃO é o algoritmo oficial do Garmin, é a tua melhor aproximação dada a indisponibilidade do Training Readiness real. Usa isto como base principal da resposta, explica os sinais que mais pesaram, e dá uma recomendação concreta de tipo de treino (fácil/moderado/séries/descanso).`
+        : "Sem sinais frescos suficientes para um composto de readiness.",
       latestWellness
-        ? `[Intervals.icu, dados de HOJE ${latestWellness.date}, carga de treino — NÃO é o mesmo que "Training Readiness"]: CTL (fitness) ${latestWellness.ctl}, ATL (fadiga) ${latestWellness.atl}, TSB (equilíbrio de carga) ${latestWellness.tsb} — TSB alto = pouca fadiga acumulada de treino, TSB muito negativo = carga de treino elevada recente. HRV: ${latestWellness.hrv ?? "sem dado"} ms. FC repouso: ${latestWellness.restingHr ?? "sem dado"} bpm. Sono: score ${latestWellness.sleepScore ?? "sem dado"}. IMPORTANTE: o TSB só mede equilíbrio de carga de treino — NÃO substitui o Training Readiness do Garmin, que combina HRV, sono, stress E carga num algoritmo próprio. Os dois podem divergir bastante (ex: TSB bom mas HRV baixo e sono fraco → Readiness real pode ser mau). Usa ambos como sinais complementares, nunca um como proxy automático do outro.`
+        ? `[Intervals.icu, dados de HOJE ${latestWellness.date}, carga de treino]: CTL (fitness) ${latestWellness.ctl}, ATL (fadiga) ${latestWellness.atl}, TSB ${latestWellness.tsb}.`
         : "Sem dados do Intervals.icu disponíveis.",
       latestReadiness
-        ? `Training Readiness do Garmin — ÚLTIMO REGISTO DISPONÍVEL é de ${latestReadiness.date} (${staleDays} dia(s) atrás, hoje é ${todayStr}): score ${latestReadiness.score}/100, nível ${latestReadiness.level}, feedback original: "${latestReadiness.feedbackShort}".${
+        ? `Training Readiness do Garmin (CONTEXTO HISTÓRICO, não atual) — último registo de ${latestReadiness.date} (${staleDays} dia(s) atrás): score ${latestReadiness.score}/100, nível ${latestReadiness.level}.${
             staleDays > 1
-              ? ` Tem ${staleDays} dias de atraso de sincronização — diz isso explicitamente ao utilizador. Não tens um Training Readiness atual fiável; usa o TSB/HRV/sono do Intervals.icu como sinais parciais, mas sê claro que não é a mesma coisa e que pode não captar tudo o que o Training Readiness real captaria (ex: stress, sono recente).`
+              ? ` Tem ${staleDays} dias de atraso — NÃO uses isto como resposta principal a "estou apto hoje", usa o composto acima.`
               : ""
           }`
         : "Sem dados recentes de Training Readiness do Garmin.",

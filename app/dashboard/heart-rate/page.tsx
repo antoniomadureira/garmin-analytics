@@ -4,6 +4,7 @@ import { StatTile } from "@/components/ui/stat-tile";
 import { TrendLineChart } from "@/components/dashboard/trend-line-chart";
 import { HrPerActivityChart } from "@/components/dashboard/hr-per-activity-chart";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
+import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
 
 const WEEKDAY_PT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 function weekdayPt(isoDate: string): string {
@@ -113,13 +114,7 @@ export default async function HeartRatePage() {
           ]}
         />
 
-        {isReal ? (
-          <p className="text-[11px] text-emerald-500">● dados reais (Freddy)</p>
-        ) : (
-          <p className="text-[11px] text-amber-500" title={error}>
-            ● dados de exemplo {error ? `(${error.slice(0, 80)}…)` : ""}
-          </p>
-        )}
+        <div className="flex justify-end"><DataFreshnessDot isReal={isReal} error={error} /></div>
 
         <h2 className="pt-2 text-sm font-medium text-slate-400">FC nas Atividades</h2>
 
@@ -130,13 +125,7 @@ export default async function HeartRatePage() {
 
         <HrPerActivityChart data={activityData.history} />
 
-        {activityIsReal ? (
-          <p className="text-[11px] text-emerald-500">● dados reais (Freddy)</p>
-        ) : (
-          <p className="text-[11px] text-amber-500" title={activityError}>
-            ● dados de exemplo {activityError ? `(${activityError.slice(0, 80)}…)` : ""}
-          </p>
-        )}
+        <div className="flex justify-end"><DataFreshnessDot isReal={activityIsReal} error={activityError} /></div>
       </main>
     </div>
   );

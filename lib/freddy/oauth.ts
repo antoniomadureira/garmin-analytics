@@ -170,7 +170,24 @@ export async function pollDeviceFlow(): Promise<PollResult> {
  * implementado ainda porque o caso mais comum (5 loaders na mesma
  * página) já fica resolvido com isto.
  */
-let refreshInFlight: Promise<string> | null = null;
+/**
+ * [Certo] Confirmado em produção real (2026-06-27): o lock em memória
+ * (anterior) só protegia chamadas DENTRO da mesma invocação serverless —
+ * exatamente como já estava documentado como limitação conhecida. Na
+ * prática, abrir várias páginas diferentes (Painel, FC, Sono, Passos,
+ * Corrida) em sucessão rápida fez com que invocações serverless
+ * DIFERENTES lessem o mesmo refresh_token quase ao mesmo tempo, todas
+ * tentassem renovar, e todas-menos-uma recebessem "invalid_token" (o
+ * refresh_token é de uso único). Corrigido com um lock distribuído real
+ * no Upstash (SET NX, partilhado por todas as invocações):
+ *   1. Tenta adquirir o lock (`kv.set(LOCK_KEY, ..., { nx: true, ex: N })`).
+ *   2. Se conseguir, renova e liberta o lock.
+ *   3. Se NÃO conseguir (outra invocação já está a renovar), espera um
+ *      pouco e volta a ler os tokens do Upstash — assume que a invocação
+ *      que tem o lock vai escrever o token novo a tempo.
+ */
+const REFRESH_LOCK_KEY = "freddy:oauth_refresh_lock";
+const REFRESH_LOCK_TTL_SECONDS = 20; // tempo-limite de segurança, caso a invocação com o lock rebente sem o libertar
 
 export async function getValidAccessToken(): Promise<string> {
   const tokens = await kv.get<TokenSet>(TOKENS_KV_KEY);
@@ -183,14 +200,30 @@ export async function getValidAccessToken(): Promise<string> {
     return tokens.access_token;
   }
 
-  if (refreshInFlight) {
-    return refreshInFlight;
+  const gotLock = await kv.set(REFRESH_LOCK_KEY, "1", { nx: true, ex: REFRESH_LOCK_TTL_SECONDS });
+
+  if (gotLock) {
+    try {
+      return await doRefresh(tokens);
+    } finally {
+      await kv.del(REFRESH_LOCK_KEY);
+    }
   }
 
-  refreshInFlight = doRefresh(tokens).finally(() => {
-    refreshInFlight = null;
-  });
-  return refreshInFlight;
+  // [Provável] Outra invocação já está a renovar — espera por ela em vez
+  // de competir pelo mesmo refresh_token. Até 6 tentativas × 700ms ≈ 4.2s,
+  // tempo razoável para um pedido de token completar.
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await new Promise((r) => setTimeout(r, 700));
+    const fresh = await kv.get<TokenSet>(TOKENS_KV_KEY);
+    if (fresh && fresh.expires_at > Date.now() + fiveMinutes) {
+      return fresh.access_token;
+    }
+  }
+
+  throw new Error(
+    "Não foi possível obter um token válido — outra invocação estava a renovar mas não terminou a tempo. Tente novamente."
+  );
 }
 
 async function doRefresh(tokens: TokenSet): Promise<string> {

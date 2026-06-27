@@ -10,6 +10,7 @@ import {
   type RunningStatsData,
 } from "@/components/dashboard/running-stats-charts";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
+import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
 
 function roundTo(v: number, d: number) {
   const f = 10 ** d;
@@ -83,13 +84,7 @@ export default async function RunningPage() {
         <h2 className="text-sm font-medium text-slate-400">Corrida</h2>
 
         <MonthlyTrendChart data={monthlyResult.data} />
-        {monthlyResult.isReal ? (
-          <p className="text-[11px] text-emerald-500">● dados reais (Freddy)</p>
-        ) : (
-          <p className="text-[11px] text-amber-500" title={monthlyResult.error}>
-            ● dados de exemplo {monthlyResult.error ? `(${monthlyResult.error.slice(0, 80)}…)` : ""}
-          </p>
-        )}
+        <div className="flex justify-end"><DataFreshnessDot isReal={monthlyResult.isReal} error={monthlyResult.error} /></div>
 
         <RunningStatsTiles data={statsResult.data} />
 
@@ -102,13 +97,7 @@ export default async function RunningPage() {
 
         <WeeklyElevationChart data={statsResult.data.weeklyElevation} />
 
-        {statsResult.isReal ? (
-          <p className="text-[11px] text-emerald-500">● dados reais (Freddy)</p>
-        ) : (
-          <p className="text-[11px] text-amber-500" title={statsResult.error}>
-            ● dados de exemplo {statsResult.error ? `(${statsResult.error.slice(0, 80)}…)` : ""}
-          </p>
-        )}
+        <div className="flex justify-end"><DataFreshnessDot isReal={statsResult.isReal} error={statsResult.error} /></div>
 
         {/* <RecentActivitiesList activities={...} /> — escondido a pedido, reativar mais tarde */}
       </main>

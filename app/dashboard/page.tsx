@@ -22,60 +22,47 @@ import { Heart, Zap, Moon, Activity as ActivityIcon, Gauge } from "lucide-react"
 
 async function loadReadiness(service: Awaited<ReturnType<typeof getFreddyDataService>> | null, connectError?: string): Promise<{ data: ReadinessCardData; isReal: boolean; error?: string }> {
   const mock: ReadinessCardData = {
-    score: 78,
-    level: "Bom",
-    feedbackShort: "Boa recuperação. Apto para treino de intensidade moderada a alta.",
-    sleepScore: 84,
-    hrvStatusLabel: "Equilibrado",
-    acuteLoad: 312,
-    staleDaysAgo: null,
+    compositeScore: 78,
+    recommendation: "Sinais maioritariamente positivos — janela razoável para treino de qualidade (séries, tempo run).",
+    signals: [
+      { label: "Carga de Treino (TSB)", status: "bom", detail: "+11.7" },
+      { label: "HRV", status: "bom", detail: "39ms (+2% vs média)" },
+      { label: "FC Repouso", status: "ok", detail: "56bpm (+3% vs média)" },
+      { label: "Sono", status: "bom", detail: "84/100" },
+      { label: "Stress Médio", status: "bom", detail: "24" },
+    ],
+    garminScore: 78,
+    garminLevel: "Bom",
+    garminStaleDaysAgo: null,
+    sleepScoreValue: 84,
   };
   if (!service) return { data: mock, isReal: false, error: connectError };
   try {
-    const [readinessEntries, sleepEntries, wellness] = await Promise.all([
-      service.getTrainingReadiness(10), // [Certo] janela maior que 7 — este metric tem atraso de sync confirmado (até 5 dias)
-      service.getSleepSummary(3).catch(() => []),
-      service.getWellnessWeekly(7).catch(() => []), // [Certo] Intervals.icu — sempre fresco, usado para HRV e como reforço do sono
+    const [composed, readinessEntries] = await Promise.all([
+      service.getComposedReadiness(),
+      service.getTrainingReadiness(10), // [Certo] janela maior — este metric tem atraso de sync confirmado (até vários dias)
     ]);
     const latest = readinessEntries.reduce(
       (best, cur) => (!best || cur.date > best.date ? cur : best),
       readinessEntries[0]
     );
-    if (!latest) throw new Error("Sem registo de readiness no período pedido.");
 
-    const latestSleep = sleepEntries.reduce((best, cur) => (!best || cur.date > best.date ? cur : best), sleepEntries[0]);
-    const latestWellness = wellness[wellness.length - 1];
-    const hrvValues = wellness.map((w) => w.hrv).filter((v): v is number => v !== null);
-    const hrvAvg = hrvValues.length ? hrvValues.reduce((a, b) => a + b, 0) / hrvValues.length : null;
-    // [Provável] Classificação simples vs a média dos últimos 7 dias — não é a metodologia oficial
-    // de baseline do Garmin (que usa janelas mais longas), mas é honesta sobre o que realmente compara.
-    const hrvLabel =
-      latestWellness?.hrv === undefined || latestWellness?.hrv === null
-        ? mock.hrvStatusLabel
-        : hrvAvg === null
-          ? `${latestWellness.hrv}ms`
-          : `${latestWellness.hrv}ms (${latestWellness.hrv >= hrvAvg ? "≥" : "<"} média 7d)`;
-
-    // [Certo] Revertido — derivar o score a partir do TSB estava errado:
-    // são metodologias diferentes (TSB é carga de treino; Training Readiness
-    // do Garmin combina HRV, sono, carga e stress num algoritmo próprio).
-    // Confirmado por comparação real: TSB deu "50 Bom", Garmin real deu
-    // "13 Poor" no mesmo dia — não são a mesma coisa, não se deve aproximar
-    // uma pela outra. Volta a usar sempre o Training Readiness real do
-    // Garmin aqui, com o aviso de atraso quando aplicável. O TSB fica só
-    // no card "Estado de Treino", onde já estava correto.
     const todayStr = new Date().toISOString().slice(0, 10);
-    const staleDaysAgo = Math.round((new Date(todayStr).getTime() - new Date(latest.date).getTime()) / 86400000);
+    const staleDaysAgo = latest ? Math.round((new Date(todayStr).getTime() - new Date(latest.date).getTime()) / 86400000) : null;
+
+    if (composed.compositeScore === null && !latest) {
+      throw new Error("Sem sinais frescos (Intervals.icu) nem registo de Training Readiness do Garmin.");
+    }
 
     return {
       data: {
-        score: latest.score,
-        level: latest.level,
-        feedbackShort: latest.feedbackShort,
-        sleepScore: latestWellness?.sleepScore ?? latestSleep?.overallScore ?? mock.sleepScore,
-        hrvStatusLabel: hrvLabel,
-        acuteLoad: latest.acuteLoad ?? 0,
-        staleDaysAgo: staleDaysAgo > 0 ? staleDaysAgo : null,
+        compositeScore: composed.compositeScore,
+        recommendation: composed.recommendation,
+        signals: composed.signals.map((s) => ({ label: s.label, status: s.status, detail: s.detail })),
+        garminScore: latest?.score ?? null,
+        garminLevel: latest?.level ?? "—",
+        garminStaleDaysAgo: staleDaysAgo && staleDaysAgo > 0 ? staleDaysAgo : null,
+        sleepScoreValue: composed.signals.find((s) => s.label === "Sono")?.subScore ?? null,
       },
       isReal: true,
     };
@@ -297,7 +284,7 @@ export default async function DashboardPage() {
 
   const radarData = buildRadarData(
     trainingLoadResult.data.vo2Max,
-    readinessResult.data.score,
+    readinessResult.data.compositeScore ?? readinessResult.data.garminScore ?? 50,
     runningResult.data.weeklyDistanceKm,
     null // [TODO] FC média semanal ainda não recolhida separadamente
   );
@@ -334,29 +321,21 @@ export default async function DashboardPage() {
         <section>
           <h2 className="mb-3 text-sm font-medium text-slate-400">Em Foco</h2>
           <div className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="relative flex h-full flex-col">
-              <span className="absolute left-3 top-3 z-10">
-                <DataFreshnessDot isReal={readinessResult.isReal} error={readinessResult.error} />
-              </span>
+            <div className="flex h-full flex-col">
               <ReadinessCard data={readinessResult.data} />
+              <div className="mt-1 flex justify-end"><DataFreshnessDot isReal={readinessResult.isReal} error={readinessResult.error} /></div>
             </div>
-            <div className="relative flex h-full flex-col">
-              <span className="absolute left-3 top-3 z-10">
-                <DataFreshnessDot isReal={trainingLoadResult.isReal} error={trainingLoadResult.error} />
-              </span>
+            <div className="flex h-full flex-col">
               <TrainingLoadCard data={trainingLoadResult.data} />
+              <div className="mt-1 flex justify-end"><DataFreshnessDot isReal={trainingLoadResult.isReal} error={trainingLoadResult.error} /></div>
             </div>
-            <div className="relative flex h-full flex-col">
-              <span className="absolute left-3 top-3 z-10">
-                <DataFreshnessDot isReal={runningResult.isReal} error={runningResult.error} />
-              </span>
+            <div className="flex h-full flex-col">
               <RunningSummaryCard data={runningResult.data} />
+              <div className="mt-1 flex justify-end"><DataFreshnessDot isReal={runningResult.isReal} error={runningResult.error} /></div>
             </div>
-            <div className="relative flex h-full flex-col">
-              <span className="absolute left-3 top-3 z-10">
-                <DataFreshnessDot isReal={recoveryResult.isReal} error={recoveryResult.error} />
-              </span>
+            <div className="flex h-full flex-col">
               <RecoveryCard data={recoveryResult.data} />
+              <div className="mt-1 flex justify-end"><DataFreshnessDot isReal={recoveryResult.isReal} error={recoveryResult.error} /></div>
             </div>
           </div>
         </section>
@@ -366,7 +345,7 @@ export default async function DashboardPage() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <StatTile icon={<Heart size={14} />} label="FC Repouso" value={glanceResult.data.restingHr} unit="bpm" sublabel="Hoje" accent="#fb7185" />
             <StatTile icon={<Zap size={14} />} label="Bateria" value={recoveryResult.data.bodyBatteryMax} unit="%" sublabel="Pico hoje" accent="#22d3ee" />
-            <StatTile icon={<Moon size={14} />} label="Sono" value={readinessResult.data.sleepScore} unit="/100" sublabel="Última noite" accent="#a78bfa" />
+            <StatTile icon={<Moon size={14} />} label="Sono" value={readinessResult.data.sleepScoreValue} unit="/100" sublabel="Última noite" accent="#a78bfa" />
             <StatTile icon={<ActivityIcon size={14} />} label="VO2 Max" value={trainingLoadResult.data.vo2Max} sublabel="Superior" accent="#34d399" />
             <StatTile icon={<Gauge size={14} />} label="TSB" value={trainingLoadResult.data.tsb !== null ? (trainingLoadResult.data.tsb > 0 ? `+${trainingLoadResult.data.tsb}` : trainingLoadResult.data.tsb) : null} sublabel="Hoje" accent="#fb923c" />
             <StatTile icon={<Heart size={14} />} label="Stress" value={recoveryResult.data.avgStress} sublabel="Médio recente" accent="#f87171" />
@@ -382,10 +361,7 @@ export default async function DashboardPage() {
         <section className="space-y-4">
           <h2 className="text-sm font-medium text-slate-400">Estado de Forma</h2>
           <FormBanner data={{ message: formMessage, tone: formTone }} />
-          <div className="grid gap-4 lg:grid-cols-2">
-            <TrainingLoadCard data={trainingLoadResult.data} />
-            <FormRadarCard data={radarData} />
-          </div>
+          <FormRadarCard data={radarData} />
         </section>
       </main>
     </div>

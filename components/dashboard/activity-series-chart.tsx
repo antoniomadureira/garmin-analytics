@@ -42,7 +42,7 @@ export function ActivitySeriesChart({ series }: { series: DetailSeriesPoint[] })
         ))}
       </div>
       <div className="h-48">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={192}>
           <LineChart data={series} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
             <XAxis

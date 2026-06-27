@@ -30,8 +30,8 @@ export function RunningSummaryCard({ data }: { data: RunningSummaryCardData }) {
           <div className="text-[11px] text-slate-500">corridas</div>
         </div>
       </div>
-      <div className="mt-4 h-28">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="mt-4">
+        <ResponsiveContainer width="100%" height={112}>
           <BarChart data={data.dailyDistances} margin={{ top: 4, right: 4, bottom: 0, left: -28 }}>
             <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} />

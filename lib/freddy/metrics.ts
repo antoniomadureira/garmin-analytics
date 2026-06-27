@@ -464,10 +464,17 @@ export class FreddyDataService {
     return mapToVo2Max(raw); // aplicar regra hasDiscrepancy aqui
   }
 
+  /**
+   * [Certo] Confirmado: racePredictions_* tem o mesmo atraso de
+   * sincronização do Training Readiness (último registo visto a vários
+   * dias do "hoje" real). Pedir só `days: 1` ("hoje") devolvia
+   * sistematicamente "No data found" — corrigido para uma janela maior,
+   * escolhendo o registo mais recente disponível dentro dela.
+   */
   async getRacePredictions(): Promise<RacePredictionSummary> {
     const raw = await this.client.queryMetrics({
       metrics: Object.values(RacePredictionMetrics),
-      days: 1,
+      days: 10,
       includeRaw: true,
     });
     return mapToRacePrediction(raw);
@@ -666,6 +673,90 @@ export class FreddyDataService {
    * e campos de autorregisto como readiness/fatigue/mood, null se o
    * utilizador não os preencher manualmente no Intervals.icu).
    */
+  /**
+   * [Certo] Composto PRÓPRIO, transparente, de sinais frescos — não
+   * pretende substituir o algoritmo do Garmin (essa foi a lição da
+   * tentativa anterior com TSB sozinho: misturava conceitos diferentes
+   * e deu um resultado otimista a mais). Cada sinal é avaliado
+   * individualmente e fica visível; o score final é só a média das
+   * pontuações 0-100 de cada sinal disponível, sem peso "secreto".
+   * [Suposição] Os limiares de cada sub-avaliação (TSB, HRV±10%, FC±5%)
+   * são escolhas minhas razoáveis, não uma fórmula oficial publicada.
+   */
+  async getComposedReadiness(): Promise<{
+    compositeScore: number | null;
+    recommendation: string;
+    signals: { label: string; status: "bom" | "ok" | "atencao"; detail: string; subScore: number | null }[];
+  }> {
+    const [wellness, battery] = await Promise.all([
+      this.getWellnessWeekly(8),
+      this.getBodyBatteryWeekly(3).catch(() => []),
+    ]);
+    const latest = wellness[wellness.length - 1];
+    const latestBattery = battery[battery.length - 1];
+    const hrvValues = wellness.map((w) => w.hrv).filter((v): v is number => v !== null);
+    const hrvAvg = hrvValues.length ? hrvValues.reduce((a, b) => a + b, 0) / hrvValues.length : null;
+    const rhrValues = wellness.map((w) => w.restingHr).filter((v): v is number => v !== null);
+    const rhrAvg = rhrValues.length ? rhrValues.reduce((a, b) => a + b, 0) / rhrValues.length : null;
+
+    const signals: { label: string; status: "bom" | "ok" | "atencao"; detail: string; subScore: number | null }[] = [];
+
+    // TSB
+    if (latest?.tsb !== null && latest?.tsb !== undefined) {
+      const tsb = latest.tsb;
+      const status = tsb > 5 ? "bom" : tsb >= -10 ? "ok" : "atencao";
+      const subScore = tsb > 5 ? 100 : tsb >= -10 ? 70 : tsb >= -20 ? 40 : 10;
+      signals.push({ label: "Carga de Treino (TSB)", status, detail: `${tsb > 0 ? "+" : ""}${tsb}`, subScore });
+    }
+
+    // HRV vs média 7d
+    if (latest?.hrv !== null && latest?.hrv !== undefined && hrvAvg !== null) {
+      const diffPct = ((latest.hrv - hrvAvg) / hrvAvg) * 100;
+      const status = diffPct >= -5 ? "bom" : diffPct >= -10 ? "ok" : "atencao";
+      const subScore = Math.max(0, Math.min(100, Math.round(70 + diffPct * 3)));
+      signals.push({ label: "HRV", status, detail: `${latest.hrv}ms (${diffPct >= 0 ? "+" : ""}${diffPct.toFixed(0)}% vs média)`, subScore });
+    }
+
+    // FC repouso vs média 7d (inverso: mais alto que a média é mau sinal)
+    if (latest?.restingHr !== null && latest?.restingHr !== undefined && rhrAvg !== null) {
+      const diffPct = ((latest.restingHr - rhrAvg) / rhrAvg) * 100;
+      const status = diffPct <= 3 ? "bom" : diffPct <= 7 ? "ok" : "atencao";
+      const subScore = Math.max(0, Math.min(100, Math.round(70 - diffPct * 5)));
+      signals.push({ label: "FC Repouso", status, detail: `${latest.restingHr}bpm (${diffPct >= 0 ? "+" : ""}${diffPct.toFixed(0)}% vs média)`, subScore });
+    }
+
+    // Sono (score já 0-100)
+    if (latest?.sleepScore !== null && latest?.sleepScore !== undefined) {
+      const s = latest.sleepScore;
+      const status = s >= 75 ? "bom" : s >= 55 ? "ok" : "atencao";
+      signals.push({ label: "Sono", status, detail: `${s}/100`, subScore: s });
+    }
+
+    // Stress/Bateria (Garmin, ~1 dia de atraso, não 6)
+    if (latestBattery?.avgStress !== null && latestBattery?.avgStress !== undefined) {
+      const stress = latestBattery.avgStress;
+      const status = stress < 30 ? "bom" : stress < 45 ? "ok" : "atencao";
+      const subScore = Math.max(0, Math.min(100, Math.round(100 - stress * 1.5)));
+      signals.push({ label: "Stress Médio", status, detail: `${Math.round(stress)}`, subScore });
+    }
+
+    const validScores = signals.map((s) => s.subScore).filter((v): v is number => v !== null);
+    const compositeScore = validScores.length ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length) : null;
+
+    let recommendation: string;
+    if (compositeScore === null) {
+      recommendation = "Sem sinais suficientes para uma recomendação — verificar ligação ao Intervals.icu/Garmin.";
+    } else if (compositeScore >= 75) {
+      recommendation = "Sinais maioritariamente positivos — janela razoável para treino de qualidade (séries, tempo run).";
+    } else if (compositeScore >= 55) {
+      recommendation = "Sinais mistos — corrida moderada ou rolante é a opção mais segura hoje, evitar séries duras.";
+    } else {
+      recommendation = "Vários sinais de fadiga/recuperação incompleta — corrida fácil ou descanso recomendado.";
+    }
+
+    return { compositeScore, recommendation, signals };
+  }
+
   async getWellnessWeekly(days = 7): Promise<WellnessDay[]> {
     const raw = await this.client.queryMetrics({
       metrics: [WellnessMetrics.restingHr],
@@ -915,7 +1006,7 @@ export class FreddyDataService {
     const startStr = start18w.toISOString().slice(0, 10);
     const endStr = end.toISOString().slice(0, 10);
 
-    const [summarizedText, recentText, allTimeText] = await Promise.all([
+    const [summarizedText, recentText] = await Promise.all([
       this.client.queryRawText({
         metrics: [SummarizedActivityMetrics.distanceM, SummarizedActivityMetrics.elevationGainM],
         start: startStr,
@@ -924,11 +1015,6 @@ export class FreddyDataService {
       this.client.queryRawText({
         metrics: [RunActivityMetrics.distanceM, RunActivityMetrics.elevationGainM],
         start: startStr,
-        end: endStr,
-      }),
-      this.client.queryRawText({
-        metrics: [SummarizedActivityMetrics.distanceM],
-        start: "2016-01-01",
         end: endStr,
       }),
     ]);
@@ -948,16 +1034,40 @@ export class FreddyDataService {
       byDate.set(date, { km: sum(vals) / 1000, elevM: sum(summElev.get(date) ?? []) / 100, count: vals.length });
     }
 
-    // Total histórico completo (consulta extra, só distância)
-    const allTimeDist = extractValuesByDate(allTimeText, SummarizedActivityMetrics.distanceM);
+    // [Certo] Corrigido outra vez: 11 pedidos em paralelo (2016-2026) é o
+    // mesmo padrão que já vimos disparar "rate limit exceeded" noutros
+    // sítios da app com só 2 pedidos pesados ao mesmo tempo. Reduzido a
+    // sequencial (não paralelo) e a uma janela de 3 anos — cobre a
+    // generalidade dos recordes pessoais sem arriscar o limite de taxa.
+    const firstYear = end.getFullYear() - 2;
+    const currentYear = end.getFullYear();
+    const yearlyTexts: string[] = [];
+    for (let year = firstYear; year <= currentYear; year++) {
+      try {
+        const text = await this.client.queryRawText!({
+          metrics: [SummarizedActivityMetrics.distanceM],
+          start: `${year}-01-01`,
+          end: year === currentYear ? endStr : `${year}-12-31`,
+        });
+        yearlyTexts.push(text);
+      } catch {
+        yearlyTexts.push(""); // [Provável] ano sem dados ou erro pontual — ignora-se em vez de rebentar tudo
+      }
+    }
+    const allTimeDist = new Map<string, number[]>();
+    for (const yearText of yearlyTexts) {
+      for (const [date, vals] of extractValuesByDate(yearText, SummarizedActivityMetrics.distanceM)) {
+        allTimeDist.set(date, vals);
+      }
+    }
     let totalAllTimeKm = 0;
     for (const vals of allTimeDist.values()) totalAllTimeKm += sum(vals) / 1000;
-    // somar também o período recente que pode não estar no summarized (sobreposição), evitando dupla contagem por data
+    // somar também o período recente que pode não estar no summarized (sobreposição/atraso de sync), evitando dupla contagem por data
     for (const [date, vals] of recentDist) {
       if (!allTimeDist.has(date)) totalAllTimeKm += sum(vals) / 1000;
     }
 
-    // Agrupar por semana (segunda a domingo) e por mês
+    // Agrupar por semana (segunda a domingo) e por mês — usa byDate (janela de 18 semanas), correto para isto
     function isoWeekStart(d: Date): string {
       const date = new Date(d);
       const day = (date.getDay() + 6) % 7; // 0 = segunda
@@ -967,8 +1077,6 @@ export class FreddyDataService {
 
     const weekBuckets = new Map<string, { km: number; elevM: number; count: number }>();
     const monthBuckets = new Map<string, number>();
-    let totalYtdKm = 0;
-    const ytdStart = `${end.getFullYear()}-01-01`;
 
     for (const [date, d] of byDate) {
       const weekKey = isoWeekStart(new Date(`${date}T00:00:00`));
@@ -980,8 +1088,19 @@ export class FreddyDataService {
 
       const monthKey = date.slice(0, 7);
       monthBuckets.set(monthKey, (monthBuckets.get(monthKey) ?? 0) + d.km);
+    }
 
-      if (date >= ytdStart) totalYtdKm += d.km;
+    // [Certo] Total YTD — corrigido: antes comparava contra `byDate`, que só
+    // tem 18 semanas, sub-contando sempre que 1 de Janeiro caía fora dessa
+    // janela (quase todo o ano). Agora soma a partir do histórico completo
+    // (allTimeDist, já corrigido acima) fundido com os dados recentes.
+    const ytdStart = `${currentYear}-01-01`;
+    let totalYtdKm = 0;
+    for (const [date, vals] of allTimeDist) {
+      if (date >= ytdStart) totalYtdKm += sum(vals) / 1000;
+    }
+    for (const [date, vals] of recentDist) {
+      if (date >= ytdStart && !allTimeDist.has(date)) totalYtdKm += sum(vals) / 1000;
     }
 
     const sortedWeeks = [...weekBuckets.entries()].sort(([a], [b]) => (a < b ? -1 : 1));
@@ -1075,25 +1194,37 @@ export class FreddyDataService {
    * uma convenção oficial — uma corrida de 5.3km entra como "5K", o que
    * pode não ser o que o utilizador consideraria um recorde de 5K "puro".
    */
+  /**
+   * [Certo] Confirmado por teste real: pedir o histórico desde 2016 devolve
+   * só 500 linhas (limite da API), que na prática cobre uns ~14 meses, não
+   * 10 anos — e provavelmente foi a causa de esta função ter falhado em
+   * produção (timeout/limite ao processar um pedido tão grande). Corrigido
+   * para pedir só ~18 meses de propósito, dentro do limite confirmado, e o
+   * texto da UI deixa de dizer "desde 2016".
+   */
   async getPersonalRecords(): Promise<
-    { label: string; targetKm: number; distanceKm: number; durationSec: number; date: string; paceMinPerKm: number }[]
+    { label: string; targetKm: number; distanceKm: number; durationSec: number; date: string; paceMinPerKm: number; activityName: string | null }[]
   > {
     if (!this.client.queryRawText) {
       throw new Error("Este client não implementa queryRawText — necessário para os recordes pessoais.");
     }
+    const start = new Date();
+    start.setDate(start.getDate() - 540);
     const text = await this.client.queryRawText({
-      metrics: [SummarizedActivityMetrics.distanceM, SummarizedActivityMetrics.durationSec],
-      start: "2016-01-01",
+      metrics: [SummarizedActivityMetrics.distanceM, SummarizedActivityMetrics.durationSec, RunActivityMetrics.activityName],
+      start: start.toISOString().slice(0, 10),
       end: new Date().toISOString().slice(0, 10),
     });
     const distByDate = extractValuesByDate(text, SummarizedActivityMetrics.distanceM);
     const durByDate = extractValuesByDate(text, SummarizedActivityMetrics.durationSec);
+    const nameByDate = extractStringValuesByDate(text, RunActivityMetrics.activityName);
 
-    const candidates: { date: string; distanceKm: number; durationSec: number }[] = [];
+    const candidates: { date: string; distanceKm: number; durationSec: number; activityName: string | null }[] = [];
     for (const [date, distances] of distByDate) {
       const durations = durByDate.get(date) ?? [];
+      const names = nameByDate.get(date) ?? [];
       distances.forEach((distM, i) => {
-        candidates.push({ date, distanceKm: distM / 1000, durationSec: durations[i] ?? 0 });
+        candidates.push({ date, distanceKm: distM / 1000, durationSec: durations[i] ?? 0, activityName: names[i] ?? null });
       });
     }
 
@@ -1118,6 +1249,7 @@ export class FreddyDataService {
           durationSec: best.durationSec,
           date: best.date,
           paceMinPerKm: roundTo(best.durationSec / 60 / best.distanceKm, 2),
+          activityName: best.activityName,
         };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null);

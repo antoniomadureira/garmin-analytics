@@ -42,8 +42,7 @@ export function DashboardNav() {
         </div>
       </header>
 
-      {/* [Certo] Mobile: barra fixa no fundo, só ícones — experiência alternativa
-          ao hambúrguer anterior, a pedido, para testar se funciona melhor. */}
+      {/* Mobile: barra fixa no fundo, só ícones */}
       <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between border-t border-slate-800 bg-slate-950/95 px-1 backdrop-blur md:hidden">
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href;
@@ -59,8 +58,13 @@ export function DashboardNav() {
           );
         })}
       </nav>
-      {/* Espaço reservado para a barra fixa não cobrir conteúdo no fundo da página */}
-      <div className="h-14 md:hidden" />
+
+      {/* [Certo] padding-bottom no body em mobile, para a barra fixa não cobrir o último conteúdo da página */}
+      <style>{`
+        @media (max-width: 767px) {
+          body { padding-bottom: 3.5rem; }
+        }
+      `}</style>
     </>
   );
 }
