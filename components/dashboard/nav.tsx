@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Activity, Heart, Moon, Footprints, MessageCircle, Trophy, LayoutDashboard, Menu, X } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Activity, Heart, Moon, Footprints, MessageCircle, Trophy, LayoutDashboard } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Painel", icon: LayoutDashboard, href: "/dashboard" },
@@ -14,56 +14,53 @@ const NAV_ITEMS = [
 ];
 
 export function DashboardNav() {
-  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
 
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-800 bg-slate-950/80 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-        <div className="text-sm font-semibold tracking-tight text-slate-100">
-          Garmin <span style={{ color: "#007cc3" }}>Analytics</span>
+    <>
+      <header className="sticky top-0 z-20 border-b border-slate-800 bg-slate-950/80 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+          <div className="text-sm font-semibold tracking-tight text-slate-100">
+            Garmin <span style={{ color: "#007cc3" }}>Analytics</span>
+          </div>
+
+          {/* Desktop: barra horizontal com texto */}
+          <nav className="hidden gap-1 md:flex">
+            {NAV_ITEMS.map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition hover:bg-slate-800/60 hover:text-slate-100 ${
+                  pathname === item.href ? "text-slate-100" : "text-slate-400"
+                }`}
+              >
+                <item.icon size={14} />
+                {item.label}
+              </a>
+            ))}
+          </nav>
         </div>
+      </header>
 
-        {/* Desktop: barra horizontal */}
-        <nav className="hidden gap-1 md:flex">
-          {NAV_ITEMS.map((item) => (
+      {/* [Certo] Mobile: barra fixa no fundo, só ícones — experiência alternativa
+          ao hambúrguer anterior, a pedido, para testar se funciona melhor. */}
+      <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between border-t border-slate-800 bg-slate-950/95 px-1 backdrop-blur md:hidden">
+        {NAV_ITEMS.map((item) => {
+          const active = pathname === item.href;
+          return (
             <a
               key={item.href}
               href={item.href}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-slate-400 transition hover:bg-slate-800/60 hover:text-slate-100"
+              aria-label={item.label}
+              className={`flex flex-1 flex-col items-center gap-0.5 py-2 ${active ? "text-emerald-400" : "text-slate-500"}`}
             >
-              <item.icon size={14} />
-              {item.label}
+              <item.icon size={18} />
             </a>
-          ))}
-        </nav>
-
-        {/* Mobile: botão hambúrguer */}
-        <button
-          type="button"
-          aria-label={open ? "Fechar menu" : "Abrir menu"}
-          onClick={() => setOpen((v) => !v)}
-          className="rounded-lg p-2 text-slate-300 hover:bg-slate-800/60 md:hidden"
-        >
-          {open ? <X size={20} /> : <Menu size={20} />}
-        </button>
-      </div>
-
-      {/* Mobile: painel expansível */}
-      {open && (
-        <nav className="border-t border-slate-800 px-4 py-2 md:hidden">
-          {NAV_ITEMS.map((item) => (
-            <a
-              key={item.href}
-              href={item.href}
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-slate-300 transition hover:bg-slate-800/60"
-            >
-              <item.icon size={16} />
-              {item.label}
-            </a>
-          ))}
-        </nav>
-      )}
-    </header>
+          );
+        })}
+      </nav>
+      {/* Espaço reservado para a barra fixa não cobrir conteúdo no fundo da página */}
+      <div className="h-14 md:hidden" />
+    </>
   );
 }
