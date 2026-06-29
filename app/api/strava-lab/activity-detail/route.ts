@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findStravaActivityIdByDate, getActivityDetailByStravaId } from "@/lib/strava-lab/client";
+import { findStravaActivityIdByDate, getActivityDetailByStravaId, getActivityLaps } from "@/lib/strava-lab/client";
 
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get("date");
@@ -9,11 +9,14 @@ export async function GET(req: NextRequest) {
   try {
     const activityId = await findStravaActivityIdByDate(date);
     if (!activityId) {
-      return NextResponse.json({ segmentEfforts: [], bestEfforts: [], prCount: 0, notFound: true });
+      return NextResponse.json({ segmentEfforts: [], bestEfforts: [], prCount: 0, laps: [], notFound: true });
     }
-    const detail = await getActivityDetailByStravaId(activityId);
-    return NextResponse.json(detail);
+    const [detail, laps] = await Promise.all([
+      getActivityDetailByStravaId(activityId),
+      getActivityLaps(activityId).catch(() => []),
+    ]);
+    return NextResponse.json({ ...detail, laps });
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 200 }); // [Certo] 200 de propósito — o painel trata isto como "secção opcional ausente", não como erro a mostrar
+    return NextResponse.json({ error: String(err) }, { status: 200 });
   }
 }

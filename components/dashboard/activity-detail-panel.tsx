@@ -40,6 +40,7 @@ interface StravaDetail {
   segmentEfforts: { segmentName: string; distanceM: number; elapsedTimeSec: number; elevGainM: number }[];
   bestEfforts: { label: string; seconds: number }[];
   prCount: number;
+  laps: { lapIndex: number; name: string; distanceM: number; elapsedTimeSec: number; avgHr: number | null }[];
   notFound?: boolean;
   error?: string;
 }
@@ -50,10 +51,28 @@ function formatSeconds(sec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+interface HrZone {
+  zone: number;
+  min: number;
+  max: number;
+}
+
 export function ActivityDetailPanel({ date }: { date: string }) {
   const [data, setData] = useState<ActivityDetailFull | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [strava, setStrava] = useState<StravaDetail | null>(null);
+  const [zones, setZones] = useState<HrZone[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/strava-lab/zones")
+      .then((res) => res.json())
+      .then((json) => !cancelled && json.heartRateZones && setZones(json.heartRateZones))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +151,21 @@ export function ActivityDetailPanel({ date }: { date: string }) {
 
       {strava && !strava.notFound && !strava.error && (
         <div className="space-y-3 border-t border-slate-800 pt-3">
+          {strava.laps && strava.laps.length > 1 && (
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Laps / Splits</h4>
+              <div className="space-y-1">
+                {strava.laps.map((l) => (
+                  <div key={l.lapIndex} className="flex items-center justify-between rounded-lg bg-slate-900/40 px-2.5 py-1.5 text-xs">
+                    <span className="text-slate-400">Lap {l.lapIndex}</span>
+                    <span className="text-slate-300">{(l.distanceM / 1000).toFixed(2)}km</span>
+                    <span className="text-slate-300">{formatSeconds(l.elapsedTimeSec)}</span>
+                    <span className="text-slate-400">{l.avgHr ? `${Math.round(l.avgHr)}bpm` : "—"}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {strava.bestEfforts.length > 0 && (
             <div>
               <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Melhores Tempos (Strava)</h4>
@@ -162,6 +196,40 @@ export function ActivityDetailPanel({ date }: { date: string }) {
               </div>
             </div>
           )}
+        </div>
+      )}
+      {zones && zones.length > 0 && data.series.length > 0 && !data.samplesUnavailable && (
+        <div className="border-t border-slate-800 pt-3">
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Tempo em Zona (FC)</h4>
+          {(() => {
+            // [Provável] Aproximação: cada amostra pesa o mesmo tempo
+            // (duração total ÷ nº de amostras) — não usa os timestamps
+            // exatos entre amostras, que já não temos isolados aqui.
+            const samplesWithHr = data.series.filter((p) => p.hr !== null);
+            const secPerSample = samplesWithHr.length ? data.durationSec / data.series.length : 0;
+            const counts = zones.map(() => 0);
+            for (const p of samplesWithHr) {
+              const idx = zones.findIndex((z) => (p.hr as number) >= z.min && (z.max < 0 || p.hr as number <= z.max));
+              if (idx >= 0) counts[idx] += secPerSample;
+            }
+            const total = counts.reduce((a, b) => a + b, 0) || 1;
+            return (
+              <div className="space-y-1">
+                {zones.map((z, i) => (
+                  <div key={z.zone} className="flex items-center gap-2 text-xs">
+                    <span className="w-10 text-slate-500">Z{z.zone}</span>
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${(counts[i] / total) * 100}%`, backgroundColor: ["#34d399", "#22d3ee", "#fbbf24", "#fb923c", "#f87171"][i] || "#94a3b8" }}
+                      />
+                    </div>
+                    <span className="w-12 text-right text-slate-400">{formatHm(counts[i])}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

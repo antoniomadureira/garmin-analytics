@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Activity, Heart, Moon, Footprints, MessageCircle, LayoutDashboard, ShoppingBag } from "lucide-react";
+import { Activity, Heart, Moon, Footprints, MessageCircle, LayoutDashboard, ShoppingBag, Mountain } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Painel", icon: LayoutDashboard, href: "/dashboard" },
@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { label: "Passos", icon: Footprints, href: "/dashboard/steps" },
   { label: "Corrida", icon: Activity, href: "/dashboard/running" },
   { label: "Calçado", icon: ShoppingBag, href: "/dashboard/gear" },
+  { label: "Segmentos", icon: Mountain, href: "/dashboard/segments" },
   { label: "Treinador IA", icon: MessageCircle, href: "/dashboard/coach" },
 ];
 

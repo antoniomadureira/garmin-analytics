@@ -65,6 +65,48 @@ export async function getActivityDetailByStravaId(activityId: string): Promise<S
   return fetchFromStravaLab<StravaLabActivityDetail>(`/api/data?type=activity&id=${activityId}`);
 }
 
+export interface StravaLabLap {
+  lapIndex: number;
+  name: string;
+  distanceM: number;
+  elapsedTimeSec: number;
+  avgHr: number | null;
+  avgSpeedMs: number | null;
+}
+export interface StravaLabStarredSegment {
+  id: string;
+  name: string;
+  distanceM: number;
+  avgGrade: number;
+  climbCategory: number;
+}
+export interface StravaLabSegmentEffort {
+  date: string;
+  elapsedTimeSec: number;
+}
+export interface StravaLabZones {
+  heartRateZones: { zone: number; min: number; max: number }[];
+}
+
+export async function getActivityLaps(activityId: string): Promise<StravaLabLap[]> {
+  const { laps } = await fetchFromStravaLab<{ laps: StravaLabLap[] }>(`/api/data?type=laps&id=${activityId}`);
+  return laps;
+}
+
+export async function getStarredSegments(): Promise<StravaLabStarredSegment[]> {
+  const { segments } = await fetchFromStravaLab<{ segments: StravaLabStarredSegment[] }>("/api/data?type=starred-segments");
+  return segments;
+}
+
+export async function getSegmentEffortHistory(segmentId: string): Promise<StravaLabSegmentEffort[]> {
+  const { history } = await fetchFromStravaLab<{ history: StravaLabSegmentEffort[] }>(`/api/data?type=segment-history&id=${segmentId}`);
+  return history;
+}
+
+export async function getAthleteZones(): Promise<StravaLabZones> {
+  return fetchFromStravaLab<StravaLabZones>("/api/data?type=zones");
+}
+
 /**
  * [Provável] Corresponder uma data do Garmin a uma atividade do Strava —
  * sistemas diferentes, sem ID partilhado. Escolhe a primeira atividade
