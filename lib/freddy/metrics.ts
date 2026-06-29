@@ -523,11 +523,18 @@ export class FreddyDataService {
     caloriesKcal: number | null;
     route: [number, number][]; // [lat, lng]
     series: { distanceKm: number; hr: number | null; altitude: number | null; paceMinPerKm: number | null; cadence: number | null }[];
+    samplesUnavailable: boolean;
   }> {
     if (!this.client.queryRawText) {
       throw new Error("Este client não implementa queryRawText.");
     }
-    const scalarText = await this.client.queryRawText({
+    // [Certo] Confirmado real: activity_* (RunActivityMetrics) só cobre os
+    // últimos ~35 dias. Para datas mais antigas (ex: recordes pessoais de
+    // há mais de 1 mês) isto devolvia sempre 0/null em tudo, mesmo nos
+    // stats básicos. Corrigido: tenta activity_* primeiro, cai para
+    // summarizedActivity_* (cobertura 2016+) se vazio — elevação /100,
+    // mesma correção de unidade já confirmada noutros sítios da app.
+    const recentText = await this.client.queryRawText({
       metrics: [
         RunActivityMetrics.distanceM,
         RunActivityMetrics.durationSec,
@@ -539,51 +546,84 @@ export class FreddyDataService {
       start: date,
       end: date,
     });
-    const distanceM = extractValuesByDate(scalarText, RunActivityMetrics.distanceM).get(date)?.[0] ?? 0;
-    const durationSec = extractValuesByDate(scalarText, RunActivityMetrics.durationSec).get(date)?.[0] ?? 0;
-    const avgHr = extractValuesByDate(scalarText, RunActivityMetrics.avgHr).get(date)?.[0] ?? null;
-    const maxHr = extractValuesByDate(scalarText, RunActivityMetrics.maxHr).get(date)?.[0] ?? null;
-    const elevationGainM = extractValuesByDate(scalarText, RunActivityMetrics.elevationGainM).get(date)?.[0] ?? null;
-    const caloriesKcal = extractValuesByDate(scalarText, RunActivityMetrics.activeKcal).get(date)?.[0] ?? null;
+    let distanceM = extractValuesByDate(recentText, RunActivityMetrics.distanceM).get(date)?.[0] ?? 0;
+    let durationSec = extractValuesByDate(recentText, RunActivityMetrics.durationSec).get(date)?.[0] ?? 0;
+    let avgHr = extractValuesByDate(recentText, RunActivityMetrics.avgHr).get(date)?.[0] ?? null;
+    let maxHr = extractValuesByDate(recentText, RunActivityMetrics.maxHr).get(date)?.[0] ?? null;
+    let elevationGainM = extractValuesByDate(recentText, RunActivityMetrics.elevationGainM).get(date)?.[0] ?? null;
+    let caloriesKcal = extractValuesByDate(recentText, RunActivityMetrics.activeKcal).get(date)?.[0] ?? null;
 
-    const samplesResult = await this.client.queryMetrics({
-      metrics: [RunActivityMetrics.samples],
-      start: date,
-      end: date,
-      includeRaw: true,
-    });
-    const samples = samplesResult[date] as ActivityDetailSamplesRaw | undefined;
+    if (distanceM === 0) {
+      const summText = await this.client.queryRawText({
+        metrics: [
+          SummarizedActivityMetrics.distanceM,
+          SummarizedActivityMetrics.durationSec,
+          SummarizedActivityMetrics.avgHr,
+          SummarizedActivityMetrics.elevationGainM,
+          SummarizedActivityMetrics.calories,
+        ],
+        start: date,
+        end: date,
+      });
+      distanceM = extractValuesByDate(summText, SummarizedActivityMetrics.distanceM).get(date)?.[0] ?? 0;
+      durationSec = extractValuesByDate(summText, SummarizedActivityMetrics.durationSec).get(date)?.[0] ?? 0;
+      avgHr = extractValuesByDate(summText, SummarizedActivityMetrics.avgHr).get(date)?.[0] ?? null;
+      const elevRaw = extractValuesByDate(summText, SummarizedActivityMetrics.elevationGainM).get(date)?.[0] ?? null;
+      elevationGainM = elevRaw !== null ? elevRaw / 100 : null; // bug de unidade confirmado, igual ao resto da app
+      const calRaw = extractValuesByDate(summText, SummarizedActivityMetrics.calories).get(date)?.[0] ?? null;
+      caloriesKcal = calRaw !== null ? Math.round(calRaw / 4.184) : null; // kJ -> kcal, bug confirmado, igual ao resto da app
+      // maxHr não existe no summarizedActivity para esta atividade — fica null, honesto em vez de inventado
+    }
 
     const route: [number, number][] = [];
     const series: { distanceKm: number; hr: number | null; altitude: number | null; paceMinPerKm: number | null; cadence: number | null }[] = [];
+    let samplesUnavailable = false;
 
-    if (samples) {
-      const lat = samples.streams.latitude?.values ?? [];
-      const lng = samples.streams.longitude?.values ?? [];
-      for (let i = 0; i < Math.min(lat.length, lng.length); i++) {
-        if (lat[i] !== null && lng[i] !== null) route.push([lat[i] as number, lng[i] as number]);
+    // [Certo] As amostras GPS/FC ao segundo (activityDetail_samples) só
+    // existem para os últimos ~35 dias (confirmado: range real visto era
+    // 2026-05-23 a 2026-06-27). Para corridas mais antigas isto falha
+    // sempre — nunca deve rebentar a função toda, só esta secção.
+    try {
+      const samplesResult = await this.client.queryMetrics({
+        metrics: [RunActivityMetrics.samples],
+        start: date,
+        end: date,
+        includeRaw: true,
+      });
+      const samples = samplesResult[date] as ActivityDetailSamplesRaw | undefined;
+
+      if (samples) {
+        const lat = samples.streams.latitude?.values ?? [];
+        const lng = samples.streams.longitude?.values ?? [];
+        for (let i = 0; i < Math.min(lat.length, lng.length); i++) {
+          if (lat[i] !== null && lng[i] !== null) route.push([lat[i] as number, lng[i] as number]);
+        }
+
+        const speed = samples.streams.speed?.values ?? [];
+        const hr = samples.streams.heart_rate?.values ?? [];
+        const altitude = samples.streams.altitude?.values ?? [];
+        const cadence = samples.streams.cadence?.values ?? [];
+        const ts = samples.timestamps ?? [];
+
+        let cumDistanceM = 0;
+        for (let i = 0; i < ts.length; i++) {
+          const dt = i === 0 ? 0 : ts[i] - ts[i - 1];
+          const v = speed[i] ?? 0;
+          cumDistanceM += (v ?? 0) * dt;
+          const paceMinPerKm = v && v > 0.3 ? roundTo(1000 / v / 60, 2) : null; // [Suposição] abaixo de 0.3 m/s considera-se parado, sem pace válido
+          series.push({
+            distanceKm: roundTo(cumDistanceM / 1000, 3),
+            hr: hr[i] ?? null,
+            altitude: altitude[i] ?? null,
+            paceMinPerKm,
+            cadence: cadence[i] ?? null,
+          });
+        }
+      } else {
+        samplesUnavailable = true;
       }
-
-      const speed = samples.streams.speed?.values ?? [];
-      const hr = samples.streams.heart_rate?.values ?? [];
-      const altitude = samples.streams.altitude?.values ?? [];
-      const cadence = samples.streams.cadence?.values ?? [];
-      const ts = samples.timestamps ?? [];
-
-      let cumDistanceM = 0;
-      for (let i = 0; i < ts.length; i++) {
-        const dt = i === 0 ? 0 : ts[i] - ts[i - 1];
-        const v = speed[i] ?? 0;
-        cumDistanceM += (v ?? 0) * dt;
-        const paceMinPerKm = v && v > 0.3 ? roundTo(1000 / v / 60, 2) : null; // [Suposição] abaixo de 0.3 m/s considera-se parado, sem pace válido
-        series.push({
-          distanceKm: roundTo(cumDistanceM / 1000, 3),
-          hr: hr[i] ?? null,
-          altitude: altitude[i] ?? null,
-          paceMinPerKm,
-          cadence: cadence[i] ?? null,
-        });
-      }
+    } catch {
+      samplesUnavailable = true;
     }
 
     return {
@@ -597,6 +637,7 @@ export class FreddyDataService {
       caloriesKcal,
       route,
       series,
+      samplesUnavailable,
     };
   }
 
