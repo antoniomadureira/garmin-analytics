@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 import { DashboardNav } from "@/components/dashboard/nav";
 import { ReadinessCard, type ReadinessCardData } from "@/components/dashboard/readiness-card";
