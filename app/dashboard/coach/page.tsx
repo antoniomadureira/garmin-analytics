@@ -49,7 +49,7 @@ export default function CoachPage() {
         if (!res.ok) {
           setError(data.error ?? "Erro ao gerar o resumo inicial.");
           setMessages([
-            { role: "assistant", content: "Olá! Sou o seu treinador de corrida. Pergunte-me sobre a sua forma, prontidão para treino, ou recuperação." },
+            { role: "assistant", content: "Olá. Posso analisar a sua forma, prontidão para treino e recuperação com base nos seus dados reais — pergunte à vontade." },
           ]);
           return;
         }
@@ -92,7 +92,7 @@ export default function CoachPage() {
     <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
       <DashboardNav />
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 py-6">
-        <h2 className="mb-3 text-sm font-medium text-slate-400">Treinador IA</h2>
+        <h2 className="mb-3 text-sm font-medium text-slate-400">Consultor de Treino</h2>
 
         <div className="flex-1 space-y-4 overflow-y-auto pb-4">
           {messages.map((m, i) => (

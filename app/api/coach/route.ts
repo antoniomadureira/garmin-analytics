@@ -16,48 +16,52 @@ interface ChatMessage {
 }
 
 async function buildContextSummary(): Promise<string> {
+  let service;
   try {
-    const service = await getFreddyDataService();
-    const [readinessEntries, loadEntries, running, wellness, composed] = await Promise.all([
-      service.getTrainingReadiness(10),
-      service.getTrainingLoadSummary(7),
-      service.getWeeklyRunningSummary(7),
-      service.getWellnessWeekly(7).catch(() => []),
-      service.getComposedReadiness().catch(() => null),
-    ]);
-    const latestReadiness = readinessEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), readinessEntries[0]);
-    const latestLoad = loadEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), loadEntries[0]);
-    const latestWellness = wellness[wellness.length - 1];
-
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const staleDays = latestReadiness
-      ? Math.round((new Date(todayStr).getTime() - new Date(latestReadiness.date).getTime()) / 86400000)
-      : 0;
-
-    return [
-      composed && composed.compositeScore !== null
-        ? `[FONTE PRINCIPAL para "estou apto a treinar hoje", composto próprio de sinais frescos de hoje]: Score composto ${composed.compositeScore}/100. Recomendação base: "${composed.recommendation}". Sinais individuais: ${composed.signals.map((s) => `${s.label}: ${s.detail} (${s.status})`).join("; ")}. Este composto é uma média simples e transparente de sinais frescos (TSB, HRV, FC repouso, sono, stress) — NÃO é o algoritmo oficial do Garmin, é a tua melhor aproximação dada a indisponibilidade do Training Readiness real. Usa isto como base principal da resposta, explica os sinais que mais pesaram, e dá uma recomendação concreta de tipo de treino (fácil/moderado/séries/descanso).`
-        : "Sem sinais frescos suficientes para um composto de readiness.",
-      latestWellness
-        ? `[Intervals.icu, dados de HOJE ${latestWellness.date}, carga de treino]: CTL (fitness) ${latestWellness.ctl}, ATL (fadiga) ${latestWellness.atl}, TSB ${latestWellness.tsb}.`
-        : "Sem dados do Intervals.icu disponíveis.",
-      latestReadiness
-        ? `Training Readiness do Garmin (CONTEXTO HISTÓRICO, não atual) — último registo de ${latestReadiness.date} (${staleDays} dia(s) atrás): score ${latestReadiness.score}/100, nível ${latestReadiness.level}.${
-            staleDays > 1
-              ? ` Tem ${staleDays} dias de atraso — NÃO uses isto como resposta principal a "estou apto hoje", usa o composto acima.`
-              : ""
-          }`
-        : "Sem dados recentes de Training Readiness do Garmin.",
-      latestLoad
-        ? `ACWR (Garmin, complementar): status ${latestLoad.acwrStatus}, ratio ${latestLoad.acwrRatio}.`
-        : "",
-      `Últimos 7 dias de corrida: ${running.totalDistanceKm} km em ${running.runCount} corridas.`,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    service = await getFreddyDataService();
   } catch (err) {
-    return `[Sem acesso aos dados reais do Freddy neste momento: ${String(err).slice(0, 150)}]`;
+    return `[Sem ligação ao Freddy neste momento: ${String(err).slice(0, 150)}. Diz isto claramente ao utilizador em vez de inventar dados.]`;
   }
+
+  // [Certo] Cada fonte é independente — uma falhar não deve apagar o
+  // contexto inteiro (era exatamente o que acontecia antes: um catch
+  // único em volta de tudo, que descartava dados bons só porque uma
+  // chamada específica falhou).
+  const [readinessEntries, loadEntries, running, wellness, composed] = await Promise.all([
+    service.getTrainingReadiness(10).catch(() => []),
+    service.getTrainingLoadSummary(7).catch(() => []),
+    service.getWeeklyRunningSummary(7).catch(() => null),
+    service.getWellnessWeekly(7).catch(() => []),
+    service.getComposedReadiness().catch(() => null),
+  ]);
+  const latestReadiness = readinessEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), readinessEntries[0]);
+  const latestLoad = loadEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), loadEntries[0]);
+  const latestWellness = wellness[wellness.length - 1];
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const staleDays = latestReadiness
+    ? Math.round((new Date(todayStr).getTime() - new Date(latestReadiness.date).getTime()) / 86400000)
+    : 0;
+
+  return [
+    composed && composed.compositeScore !== null
+      ? `[FONTE PRINCIPAL para "estou apto a treinar hoje", composto próprio de sinais frescos de hoje]: Score composto ${composed.compositeScore}/100. Recomendação base: "${composed.recommendation}". Sinais individuais: ${composed.signals.map((s) => `${s.label}: ${s.detail} (${s.status})`).join("; ")}. Este composto é uma média simples e transparente de sinais frescos (TSB, HRV, FC repouso, sono, stress) — NÃO é o algoritmo oficial do Garmin, é a tua melhor aproximação dada a indisponibilidade do Training Readiness real. Usa isto como base principal da resposta, explica os sinais que mais pesaram, e dá uma recomendação concreta de tipo de treino (fácil/moderado/séries/descanso).`
+      : "Sem sinais frescos suficientes para um composto de readiness (Intervals.icu pode estar indisponível neste momento).",
+    latestWellness
+      ? `[Intervals.icu, dados de HOJE ${latestWellness.date}, carga de treino]: CTL (fitness) ${latestWellness.ctl}, ATL (fadiga) ${latestWellness.atl}, TSB ${latestWellness.tsb}.`
+      : "Sem dados do Intervals.icu disponíveis.",
+    latestReadiness
+      ? `Training Readiness do Garmin (CONTEXTO HISTÓRICO, não atual) — último registo de ${latestReadiness.date} (${staleDays} dia(s) atrás): score ${latestReadiness.score}/100, nível ${latestReadiness.level}.${
+          staleDays > 1
+            ? ` Tem ${staleDays} dias de atraso — NÃO uses isto como resposta principal a "estou apto hoje", usa o composto acima.`
+            : ""
+        }`
+      : "Sem dados recentes de Training Readiness do Garmin.",
+    latestLoad ? `ACWR (Garmin, complementar): status ${latestLoad.acwrStatus}, ratio ${latestLoad.acwrRatio}.` : "",
+    running ? `Últimos 7 dias de corrida: ${running.totalDistanceKm} km em ${running.runCount} corridas.` : "Sem dados de corrida dos últimos 7 dias.",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 const SYSTEM_PROMPT_BASE = `Você é um treinador de corrida de longa distância, a falar em português de Portugal (pt-PT), direto e baseado em evidência. Use os dados reais fornecidos abaixo para responder. TSB/CTL/ATL (Intervals.icu) e Training Readiness (Garmin) medem coisas diferentes — TSB é só equilíbrio de carga de treino, Training Readiness combina HRV+sono+stress+carga. NUNCA trates um como substituto do outro; se divergirem, diz isso ao utilizador em vez de escolher um e ignorar o outro. Se a pergunta não puder ser respondida com os dados disponíveis, diga isso claramente em vez de inventar números. Se usar um dado do Garmin marcado como desatualizado, é OBRIGATÓRIO mencionar isso explicitamente. Seja conciso (3-6 frases), e dê uma recomendação prática quando fizer sentido. Nunca dê conselhos médicos definitivos — para dor, lesão ou sintomas preocupantes, recomende sempre consultar um profissional de saúde.`;

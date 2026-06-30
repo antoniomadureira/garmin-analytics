@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { label: "Passos", icon: Footprints, href: "/dashboard/steps" },
   { label: "Performance", icon: Activity, href: "/dashboard/running" },
   { label: "Equipamento", icon: ShoppingBag, href: "/dashboard/gear" },
-  { label: "Treinador IA", icon: MessageCircle, href: "/dashboard/coach" },
+  { label: "Consultor de Treino", icon: MessageCircle, href: "/dashboard/coach" },
 ];
 
 export function DashboardNav() {

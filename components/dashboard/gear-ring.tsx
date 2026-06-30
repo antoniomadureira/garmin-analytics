@@ -88,10 +88,20 @@ export function GearRing({
             </button>
           </div>
         ) : costPerKm !== null ? (
-          <button onClick={() => setEditing(true)} className="text-xs text-slate-400 hover:text-cyan-400">
+          <div className="flex items-center justify-center gap-1.5 text-xs">
             <span className="font-medium text-cyan-400">{costPerKm.toFixed(3)}€/km</span>
-            <span className="ml-1 text-slate-600">({priceEur}€)</span>
-          </button>
+            <span className="text-slate-600">({priceEur}€)</span>
+            <button
+              onClick={() => {
+                setInputValue(priceEur?.toString() ?? "");
+                setEditing(true);
+              }}
+              className="text-slate-500 hover:text-cyan-400"
+              title="Editar preço"
+            >
+              ✎
+            </button>
+          </div>
         ) : (
           <button onClick={() => setEditing(true)} className="text-xs text-slate-500 underline-offset-2 hover:text-cyan-400 hover:underline">
             + adicionar preço de compra
