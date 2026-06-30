@@ -1075,25 +1075,28 @@ export class FreddyDataService {
       byDate.set(date, { km: sum(vals) / 1000, elevM: sum(summElev.get(date) ?? []) / 100, count: vals.length });
     }
 
-    // [Certo] Corrigido outra vez: 11 pedidos em paralelo (2016-2026) é o
-    // mesmo padrão que já vimos disparar "rate limit exceeded" noutros
-    // sítios da app com só 2 pedidos pesados ao mesmo tempo. Reduzido a
-    // sequencial (não paralelo) e a uma janela de 3 anos — cobre a
-    // generalidade dos recordes pessoais sem arriscar o limite de taxa.
-    const firstYear = end.getFullYear() - 2;
+    // [Certo] Paralelismo LIMITADO (lotes de 3, não 11 de uma vez, não
+    // 1 de cada vez) — equilíbrio entre o rate limit que já vimos
+    // disparar com 11 pedidos simultâneos, e a lentidão de 11 pedidos
+    // totalmente sequenciais (a queixa de performance desta ronda).
+    const firstYear = 2016;
     const currentYear = end.getFullYear();
+    const years = Array.from({ length: currentYear - firstYear + 1 }, (_, i) => firstYear + i);
     const yearlyTexts: string[] = [];
-    for (let year = firstYear; year <= currentYear; year++) {
-      try {
-        const text = await this.client.queryRawText!({
-          metrics: [SummarizedActivityMetrics.distanceM],
-          start: `${year}-01-01`,
-          end: year === currentYear ? endStr : `${year}-12-31`,
-        });
-        yearlyTexts.push(text);
-      } catch {
-        yearlyTexts.push(""); // [Provável] ano sem dados ou erro pontual — ignora-se em vez de rebentar tudo
-      }
+    const BATCH_SIZE = 3;
+    for (let i = 0; i < years.length; i += BATCH_SIZE) {
+      const batch = years.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map((year) =>
+          this.client.queryRawText!({
+            metrics: [SummarizedActivityMetrics.distanceM],
+            start: `${year}-01-01`,
+            end: year === currentYear ? endStr : `${year}-12-31`,
+          }).catch(() => "")
+        )
+      );
+      yearlyTexts.push(...batchResults);
+      if (i + BATCH_SIZE < years.length) await new Promise((r) => setTimeout(r, 200));
     }
     const allTimeDist = new Map<string, number[]>();
     for (const yearText of yearlyTexts) {
@@ -1173,13 +1176,19 @@ export class FreddyDataService {
     };
   }
 
+  /**
+   * [Certo] Alargado de 1 para 2 anos — a comparação homóloga
+   * (MonthlyTrendChart, modo "Comparar com ano anterior") precisa do
+   * ano anterior completo até à data equivalente de hoje. Com só 1 ano
+   * de alcance, faltava sempre a parte mais antiga do ano anterior.
+   */
   async getDailyTrend(): Promise<{ date: string; distanceKm: number; durationH: number; caloriesKcal: number }[]> {
     if (!this.client.queryRawText) {
       throw new Error("Este client não implementa queryRawText — necessário para a tendência diária.");
     }
     const end = new Date();
     const start = new Date(end);
-    start.setFullYear(start.getFullYear() - 1);
+    start.setFullYear(start.getFullYear() - 2);
     const startStr = start.toISOString().slice(0, 10);
     const endStr = end.toISOString().slice(0, 10);
 
