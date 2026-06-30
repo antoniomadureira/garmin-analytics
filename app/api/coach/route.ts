@@ -24,16 +24,22 @@ async function buildContextSummary(): Promise<string> {
     return `[Sem ligação ao Freddy neste momento: ${String(err).slice(0, 150)}. Diz isto claramente ao utilizador em vez de inventar dados.]`;
   }
 
-  // [Certo] Cada fonte é independente — uma falhar não deve apagar o
-  // contexto inteiro (era exatamente o que acontecia antes: um catch
-  // único em volta de tudo, que descartava dados bons só porque uma
-  // chamada específica falhou).
-  const [readinessEntries, loadEntries, running, wellness, composed, zones] = await Promise.all([
+  // [Certo] Corrigido rate limit confirmado: a versão anterior disparava
+  // getWellnessWeekly DUAS VEZES em paralelo (uma direta, outra dentro de
+  // getComposedReadiness) mais 4 outras chamadas — 7 pedidos reais ao
+  // Freddy de um só golpe, contra o padrão "lotes de 3" já validado no
+  // resto da app. Corrigido: getComposedReadiness passa a aceitar os
+  // dados de wellness já obtidos (sem repetir o pedido), e o resto corre
+  // em 2 lotes pequenos com pausa entre eles.
+  const [readinessEntries, wellness] = await Promise.all([
     service.getTrainingReadiness(10).catch(() => []),
+    service.getWellnessWeekly(8).catch(() => []),
+  ]);
+  await new Promise((r) => setTimeout(r, 250));
+  const [loadEntries, running, composed, zones] = await Promise.all([
     service.getTrainingLoadSummary(7).catch(() => []),
     service.getWeeklyRunningSummary(7).catch(() => null),
-    service.getWellnessWeekly(7).catch(() => []),
-    service.getComposedReadiness().catch(() => null),
+    service.getComposedReadinessFromWellness(wellness).catch(() => null),
     getAthleteZones().catch(() => null),
   ]);
   const latestReadiness = readinessEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), readinessEntries[0]);

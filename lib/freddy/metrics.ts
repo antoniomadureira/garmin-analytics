@@ -729,10 +729,23 @@ export class FreddyDataService {
     recommendation: string;
     signals: { label: string; status: "bom" | "ok" | "atencao"; detail: string; subScore: number | null }[];
   }> {
-    const [wellness, battery] = await Promise.all([
-      this.getWellnessWeekly(8),
-      this.getBodyBatteryWeekly(3).catch(() => []),
-    ]);
+    const wellness = await this.getWellnessWeekly(8);
+    return this.getComposedReadinessFromWellness(wellness);
+  }
+
+  /**
+   * [Certo] Extraído de getComposedReadiness para permitir reaproveitar
+   * um `wellness` já obtido — confirmado como causa real de rate limit
+   * no Consultor de Treino: a função antiga pedia getWellnessWeekly
+   * outra vez internamente, mesmo quando o chamador já o tinha acabado
+   * de pedir, duplicando 1 dos ~7 pedidos disparados de uma vez.
+   */
+  async getComposedReadinessFromWellness(wellness: WellnessDay[]): Promise<{
+    compositeScore: number | null;
+    recommendation: string;
+    signals: { label: string; status: "bom" | "ok" | "atencao"; detail: string; subScore: number | null }[];
+  }> {
+    const battery = await this.getBodyBatteryWeekly(3).catch(() => []);
     const latest = wellness[wellness.length - 1];
     const latestBattery = battery[battery.length - 1];
     const hrvValues = wellness.map((w) => w.hrv).filter((v): v is number => v !== null);
