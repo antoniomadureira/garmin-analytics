@@ -1,7 +1,8 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import { Activity, Heart, Moon, Footprints, MessageCircle, LayoutDashboard, ShoppingBag } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
+import { Activity, Heart, Moon, Footprints, MessageCircle, LayoutDashboard, ShoppingBag, LogOut } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Painel", icon: LayoutDashboard, href: "/dashboard" },
@@ -15,6 +16,20 @@ const NAV_ITEMS = [
 
 export function DashboardNav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    if (!confirm("Terminar sessão?")) return;
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      router.push("/login");
+      router.refresh();
+    }
+  }
 
   return (
     <>
@@ -25,20 +40,40 @@ export function DashboardNav() {
           </div>
 
           {/* Desktop: barra horizontal com texto */}
-          <nav className="hidden gap-1 md:flex">
-            {NAV_ITEMS.map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition hover:bg-slate-800/60 hover:text-slate-100 ${
-                  pathname === item.href ? "text-slate-100" : "text-slate-400"
-                }`}
-              >
-                <item.icon size={14} />
-                {item.label}
-              </a>
-            ))}
-          </nav>
+          <div className="hidden items-center gap-1 md:flex">
+            <nav className="flex gap-1">
+              {NAV_ITEMS.map((item) => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition hover:bg-slate-800/60 hover:text-slate-100 ${
+                    pathname === item.href ? "text-slate-100" : "text-slate-400"
+                  }`}
+                >
+                  <item.icon size={14} />
+                  {item.label}
+                </a>
+              ))}
+            </nav>
+            <button
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="ml-2 flex items-center gap-1.5 rounded-lg border border-slate-800 px-3 py-1.5 text-xs text-slate-400 transition hover:border-red-900 hover:bg-red-950/30 hover:text-red-400 disabled:opacity-50"
+              title="Terminar sessão"
+            >
+              <LogOut size={14} />
+            </button>
+          </div>
+
+          {/* Mobile: botão de logout solto no header, já que a barra de baixo está cheia */}
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="rounded-lg p-2 text-slate-500 hover:text-red-400 md:hidden"
+            title="Terminar sessão"
+          >
+            <LogOut size={18} />
+          </button>
         </div>
       </header>
 
