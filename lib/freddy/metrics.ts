@@ -1182,6 +1182,16 @@ export class FreddyDataService {
    * ano anterior completo até à data equivalente de hoje. Com só 1 ano
    * de alcance, faltava sempre a parte mais antiga do ano anterior.
    */
+  /**
+   * [Certo] Confirmado por teste real: o pedido de summarizedActivity_*
+   * (3 métricas × 2 anos) atinge o limite de 500 linhas da API do Freddy
+   * e corta silenciosamente em meados de agosto de 2025 — exatamente a
+   * causa do "ano anterior em falta" na comparação homóloga. Corrigido:
+   * pede o summarized ANO A ANO (mesma técnica já validada em
+   * getRunningStatsOverview), cada pedido fica bem abaixo do limite.
+   * recent (activity_*, só ~35 dias) continua num pedido único, nunca
+   * se aproxima do limite.
+   */
   async getDailyTrend(): Promise<{ date: string; distanceKm: number; durationH: number; caloriesKcal: number }[]> {
     if (!this.client.queryRawText) {
       throw new Error("Este client não implementa queryRawText — necessário para a tendência diária.");
@@ -1192,18 +1202,33 @@ export class FreddyDataService {
     const startStr = start.toISOString().slice(0, 10);
     const endStr = end.toISOString().slice(0, 10);
 
-    const [summarizedText, recentText] = await Promise.all([
-      this.client.queryRawText({
-        metrics: [SummarizedActivityMetrics.distanceM, SummarizedActivityMetrics.durationSec, SummarizedActivityMetrics.calories],
-        start: startStr,
-        end: endStr,
-      }),
-      this.client.queryRawText({
-        metrics: [RunActivityMetrics.distanceM, RunActivityMetrics.durationSec, RunActivityMetrics.activeKcal],
-        start: startStr,
-        end: endStr,
-      }),
-    ]);
+    const recentTextPromise = this.client.queryRawText({
+      metrics: [RunActivityMetrics.distanceM, RunActivityMetrics.durationSec, RunActivityMetrics.activeKcal],
+      start: startStr,
+      end: endStr,
+    });
+
+    const firstYear = start.getFullYear();
+    const lastYear = end.getFullYear();
+    const years = Array.from({ length: lastYear - firstYear + 1 }, (_, i) => firstYear + i);
+    const summarizedTexts: string[] = [];
+    const BATCH_SIZE = 3; // mesmo equilíbrio velocidade/rate-limit já validado noutros sítios da app
+    for (let i = 0; i < years.length; i += BATCH_SIZE) {
+      const batch = years.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map((year) =>
+          this.client.queryRawText!({
+            metrics: [SummarizedActivityMetrics.distanceM, SummarizedActivityMetrics.durationSec, SummarizedActivityMetrics.calories],
+            start: year === firstYear ? startStr : `${year}-01-01`,
+            end: year === lastYear ? endStr : `${year}-12-31`,
+          }).catch(() => "")
+        )
+      );
+      summarizedTexts.push(...batchResults);
+      if (i + BATCH_SIZE < years.length) await new Promise((r) => setTimeout(r, 200));
+    }
+    const summarizedText = summarizedTexts.join("\n");
+    const recentText = await recentTextPromise;
 
     const recentDist = extractValuesByDate(recentText, RunActivityMetrics.distanceM);
     const recentDur = extractValuesByDate(recentText, RunActivityMetrics.durationSec);
