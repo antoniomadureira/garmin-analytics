@@ -1,6 +1,5 @@
 import { DashboardNav } from "@/components/dashboard/nav";
 import { MonthlyTrendChart, type DailyTrendPoint } from "@/components/dashboard/monthly-trend-chart";
-// import { RecentActivitiesList, type RecentActivity } from "@/components/dashboard/recent-activities-list";
 import {
   RunningStatsTiles,
   WeeklyVolumeChart,
@@ -9,7 +8,9 @@ import {
   WeeklyElevationChart,
   type RunningStatsData,
 } from "@/components/dashboard/running-stats-charts";
+import { PersonalRecordsPanel } from "@/components/dashboard/personal-records-panel";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
+import { getPersonalRecords, type StravaLabRecord } from "@/lib/strava-lab/client";
 import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
 
 function roundTo(v: number, d: number) {
@@ -31,10 +32,6 @@ async function loadMonthly(service: Awaited<ReturnType<typeof getFreddyDataServi
     return { data: mock, isReal: false, error: String(err) };
   }
 }
-
-// [Certo] Lista de atividades escondida a pedido — código mantido, não removido,
-// para ser reativado mais tarde sem reescrever do zero.
-// async function loadActivities(...) { ... }
 
 async function loadRunningStats(service: Awaited<ReturnType<typeof getFreddyDataService>> | null, connectError?: string): Promise<{ data: RunningStatsData; isReal: boolean; error?: string }> {
   const mock: RunningStatsData = {
@@ -58,6 +55,20 @@ async function loadRunningStats(service: Awaited<ReturnType<typeof getFreddyData
   }
 }
 
+async function loadRecords(): Promise<{ data: StravaLabRecord[]; isReal: boolean; error?: string }> {
+  const mock: StravaLabRecord[] = [
+    { label: "5 km", distanceKm: 5, durationSec: 1085, date: "2026-06-21", name: "Corrida de exemplo", paceMinPerKm: 3.62 },
+    { label: "10 km", distanceKm: 10, durationSec: 2271, date: "2026-05-10", name: "Corrida de exemplo", paceMinPerKm: 3.78 },
+  ];
+  try {
+    const records = await getPersonalRecords();
+    if (records.length === 0) throw new Error("Sem recordes calculáveis a partir das atividades Strava.");
+    return { data: records, isReal: true };
+  } catch (err) {
+    return { data: mock, isReal: false, error: String(err) };
+  }
+}
+
 export default async function RunningPage() {
   let service: Awaited<ReturnType<typeof getFreddyDataService>> | null = null;
   let connectError: string | undefined;
@@ -73,15 +84,15 @@ export default async function RunningPage() {
     return { date: d.toISOString().slice(0, 10), distanceKm: km, durationH: roundTo(km / 10, 1), caloriesKcal: Math.round(km * 65) };
   });
 
-  const [monthlyResult, statsResult] = service
-    ? await Promise.all([loadMonthly(service), loadRunningStats(service, connectError)])
-    : [{ data: mockMonthly, isReal: false, error: connectError }, await loadRunningStats(null, connectError)];
+  const [monthlyResult, statsResult, recordsResult] = service
+    ? await Promise.all([loadMonthly(service), loadRunningStats(service, connectError), loadRecords()])
+    : [{ data: mockMonthly, isReal: false, error: connectError }, await loadRunningStats(null, connectError), await loadRecords()];
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <DashboardNav />
       <main className="mx-auto max-w-4xl space-y-4 px-4 py-6">
-        <h2 className="text-sm font-medium text-slate-400">Corrida</h2>
+        <h2 className="text-sm font-medium text-slate-400">Performance</h2>
 
         <MonthlyTrendChart data={monthlyResult.data} />
         <div className="flex justify-end"><DataFreshnessDot isReal={monthlyResult.isReal} error={monthlyResult.error} /></div>
@@ -96,10 +107,10 @@ export default async function RunningPage() {
         </div>
 
         <WeeklyElevationChart data={statsResult.data.weeklyElevation} />
-
         <div className="flex justify-end"><DataFreshnessDot isReal={statsResult.isReal} error={statsResult.error} /></div>
 
-        {/* <RecentActivitiesList activities={...} /> — escondido a pedido, reativar mais tarde */}
+        <PersonalRecordsPanel records={recordsResult.data} />
+        <div className="flex justify-end"><DataFreshnessDot isReal={recordsResult.isReal} error={recordsResult.error} /></div>
       </main>
     </div>
   );

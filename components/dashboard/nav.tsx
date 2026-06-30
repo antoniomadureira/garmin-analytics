@@ -8,7 +8,7 @@ const NAV_ITEMS = [
   { label: "Frequência Cardíaca", icon: Heart, href: "/dashboard/heart-rate" },
   { label: "Sono", icon: Moon, href: "/dashboard/sleep" },
   { label: "Passos", icon: Footprints, href: "/dashboard/steps" },
-  { label: "Corrida", icon: Activity, href: "/dashboard/running" },
+  { label: "Performance", icon: Activity, href: "/dashboard/running" },
   { label: "Calçado", icon: ShoppingBag, href: "/dashboard/gear" },
   { label: "Segmentos", icon: Mountain, href: "/dashboard/segments" },
   { label: "Treinador IA", icon: MessageCircle, href: "/dashboard/coach" },

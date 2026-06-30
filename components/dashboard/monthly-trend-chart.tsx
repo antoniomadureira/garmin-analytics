@@ -86,13 +86,54 @@ function roundTo(v: number, d: number) {
   return Math.round(v * f) / f;
 }
 
+/** [Certo] Quando há datas explícitas definidas, têm prioridade sobre o range rápido. */
+function buildSeriesCustomRange(daily: DailyTrendPoint[], startStr: string, endStr: string, metric: Metric) {
+  const inRange = daily.filter((d) => d.date >= startStr && d.date <= endStr);
+  const valueOf = (d: DailyTrendPoint) => (metric === "distance" ? d.distanceKm : metric === "duration" ? d.durationH : d.caloriesKcal);
+
+  const start = new Date(`${startStr}T00:00:00`);
+  const end = new Date(`${endStr}T00:00:00`);
+  const daysSpan = Math.round((end.getTime() - start.getTime()) / 86400000);
+
+  if (daysSpan <= 45) {
+    return inRange.map((d) => ({
+      key: d.date,
+      label: d.date.slice(8, 10) + "/" + d.date.slice(5, 7),
+      fullLabel: new Date(`${d.date}T00:00:00`).toLocaleDateString("pt-PT", { weekday: "long", day: "2-digit", month: "2-digit" }),
+      value: roundTo(valueOf(d), 2),
+    }));
+  }
+
+  const buckets = new Map<string, number>();
+  for (const d of inRange) {
+    const month = d.date.slice(0, 7);
+    buckets.set(month, (buckets.get(month) ?? 0) + valueOf(d));
+  }
+  return [...buckets.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([month, value]) => ({
+      key: month,
+      label: MONTH_PT[Number(month.slice(5, 7)) - 1],
+      fullLabel: MONTH_PT[Number(month.slice(5, 7)) - 1] + " " + month.slice(0, 4),
+      value: roundTo(value, 2),
+    }));
+}
+
 export function MonthlyTrendChart({ data }: { data: DailyTrendPoint[] }) {
   const [metric, setMetric] = useState<Metric>("distance");
   const [range, setRange] = useState<Range>("YTD");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
   const activeMetric = METRICS.find((m) => m.key === metric)!;
 
-  const chartData = useMemo(() => buildSeries(data, range, metric), [data, range, metric]);
+  const usingCustomRange = customStart !== "" && customEnd !== "";
+  const chartData = useMemo(
+    () => (usingCustomRange ? buildSeriesCustomRange(data, customStart, customEnd, metric) : buildSeries(data, range, metric)),
+    [data, range, metric, customStart, customEnd, usingCustomRange]
+  );
   const total = chartData.reduce((acc, d) => acc + d.value, 0);
+  const earliestDate = data.length ? data[0].date : undefined;
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   return (
     <Card>
@@ -149,18 +190,54 @@ export function MonthlyTrendChart({ data }: { data: DailyTrendPoint[] }) {
         </ResponsiveContainer>
       </div>
 
-      <div className="mt-3 flex justify-center gap-2 text-xs">
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-xs">
         {RANGES.map((r) => (
           <button
             key={r}
-            onClick={() => setRange(r)}
+            onClick={() => {
+              setRange(r);
+              setCustomStart("");
+              setCustomEnd("");
+            }}
             className={`rounded-full px-3 py-1 font-medium transition ${
-              range === r ? "bg-orange-500/20 text-orange-400" : "text-slate-500 hover:text-slate-300"
+              !usingCustomRange && range === r ? "bg-orange-500/20 text-orange-400" : "text-slate-500 hover:text-slate-300"
             }`}
           >
             {r}
           </button>
         ))}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-500">
+        <span>ou:</span>
+        <input
+          type="date"
+          value={customStart}
+          min={earliestDate}
+          max={customEnd || todayStr}
+          onChange={(e) => setCustomStart(e.target.value)}
+          className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-slate-300 [color-scheme:dark]"
+        />
+        <span>até</span>
+        <input
+          type="date"
+          value={customEnd}
+          min={customStart || earliestDate}
+          max={todayStr}
+          onChange={(e) => setCustomEnd(e.target.value)}
+          className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-slate-300 [color-scheme:dark]"
+        />
+        {usingCustomRange && (
+          <button
+            onClick={() => {
+              setCustomStart("");
+              setCustomEnd("");
+            }}
+            className="text-cyan-400 hover:underline"
+          >
+            limpar
+          </button>
+        )}
       </div>
     </Card>
   );

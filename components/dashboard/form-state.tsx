@@ -28,7 +28,15 @@ export function FormBanner({ data }: { data: FormBannerData }) {
 export function FormRadarCard({ data }: { data: RadarDimension[] }) {
   return (
     <Card>
-      <CardTitle>Radar — Fitness, Frescura, Volume, Pace, FC, Elevação</CardTitle>
+      <div className="mb-1 flex items-center justify-between">
+        <CardTitle>Performance Radar</CardTitle>
+        <span
+          className="cursor-help text-slate-600"
+          title="Comparação normalizada de 5 dimensões: Pace (velocidade média), Volume (km totais), FC Baixa (eficiência aeróbica), Elevação e Frescura (TSB atual)."
+        >
+          ⓘ
+        </span>
+      </div>
       <div>
         <ResponsiveContainer width="100%" height={256}>
           <RadarChart data={data}>

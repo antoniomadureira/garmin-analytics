@@ -94,17 +94,31 @@ export async function getActivityLaps(activityId: string): Promise<StravaLabLap[
 }
 
 export async function getStarredSegments(): Promise<StravaLabStarredSegment[]> {
-  const { segments } = await fetchFromStravaLab<{ segments: StravaLabStarredSegment[] }>("/api/data?type=starred-segments");
-  return segments;
+  const result = await fetchFromStravaLab<{ segments?: StravaLabStarredSegment[] }>("/api/data?type=starred-segments");
+  return Array.isArray(result.segments) ? result.segments : [];
 }
 
 export async function getSegmentEffortHistory(segmentId: string): Promise<StravaLabSegmentEffort[]> {
-  const { history } = await fetchFromStravaLab<{ history: StravaLabSegmentEffort[] }>(`/api/data?type=segment-history&id=${segmentId}`);
-  return history;
+  const result = await fetchFromStravaLab<{ history?: StravaLabSegmentEffort[] }>(`/api/data?type=segment-history&id=${segmentId}`);
+  return Array.isArray(result.history) ? result.history : [];
 }
 
 export async function getAthleteZones(): Promise<StravaLabZones> {
   return fetchFromStravaLab<StravaLabZones>("/api/data?type=zones");
+}
+
+export interface StravaLabRecord {
+  label: string;
+  distanceKm: number;
+  durationSec: number;
+  date: string;
+  name: string;
+  paceMinPerKm: number;
+}
+
+export async function getPersonalRecords(): Promise<StravaLabRecord[]> {
+  const result = await fetchFromStravaLab<{ records?: StravaLabRecord[] }>("/api/data?type=records");
+  return Array.isArray(result.records) ? result.records : [];
 }
 
 /**

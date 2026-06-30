@@ -308,15 +308,9 @@ export default async function DashboardPage() {
       <DashboardNav />
 
       <main className="mx-auto max-w-7xl space-y-8 px-4 py-6">
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-900/60 bg-amber-950/30 px-4 py-2 text-xs text-amber-300">
-          <span>
-            O radar de Estado de Forma é uma estimativa heurística (Pace e Elevação ainda não vêm de dados reais) — ver
-            aviso por card para o resto.
-          </span>
-          <span className="whitespace-nowrap text-slate-400">
-            Página carregada em: {new Date().toLocaleString("pt-PT", { dateStyle: "short", timeStyle: "short" })}
-          </span>
-        </div>
+        <p className="text-right text-[11px] text-slate-600">
+          Página carregada em: {new Date().toLocaleString("pt-PT", { dateStyle: "short", timeStyle: "short" })}
+        </p>
 
         <section>
           <h2 className="mb-3 text-sm font-medium text-slate-400">Em Foco</h2>
