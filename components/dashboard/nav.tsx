@@ -9,7 +9,7 @@ const NAV_ITEMS = [
   { label: "Sono", icon: Moon, href: "/dashboard/sleep" },
   { label: "Passos", icon: Footprints, href: "/dashboard/steps" },
   { label: "Performance", icon: Activity, href: "/dashboard/running" },
-  { label: "Calçado", icon: ShoppingBag, href: "/dashboard/gear" },
+  { label: "Equipamento", icon: ShoppingBag, href: "/dashboard/gear" },
   { label: "Treinador IA", icon: MessageCircle, href: "/dashboard/coach" },
 ];
 

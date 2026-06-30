@@ -116,6 +116,26 @@ export interface StravaLabRecord {
   paceMinPerKm: number;
 }
 
+export async function getGearCosts(): Promise<Record<string, number>> {
+  try {
+    const result = await fetchFromStravaLab<Record<string, number>>("/api/gear-costs");
+    return result && typeof result === "object" ? result : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function setGearCost(gearId: string, priceEur: number): Promise<void> {
+  const apiKey = process.env.STRAVA_LAB_API_KEY;
+  if (!apiKey) throw new Error("STRAVA_LAB_API_KEY não configurado.");
+  const res = await fetch(`${baseUrl()}/api/gear-costs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+    body: JSON.stringify({ gearId, priceEur }),
+  });
+  if (!res.ok) throw new Error(`Erro ao guardar custo: ${res.status} ${await res.text()}`);
+}
+
 export async function getPersonalRecords(): Promise<StravaLabRecord[]> {
   const result = await fetchFromStravaLab<{ records?: StravaLabRecord[] }>("/api/data?type=records");
   return Array.isArray(result.records) ? result.records : [];
