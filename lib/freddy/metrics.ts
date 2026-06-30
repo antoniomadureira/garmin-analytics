@@ -1075,34 +1075,20 @@ export class FreddyDataService {
       byDate.set(date, { km: sum(vals) / 1000, elevM: sum(summElev.get(date) ?? []) / 100, count: vals.length });
     }
 
-    // [Certo] Paralelismo LIMITADO (lotes de 3, não 11 de uma vez, não
-    // 1 de cada vez) — equilíbrio entre o rate limit que já vimos
-    // disparar com 11 pedidos simultâneos, e a lentidão de 11 pedidos
-    // totalmente sequenciais (a queixa de performance desta ronda).
-    const firstYear = 2016;
-    const currentYear = end.getFullYear();
-    const years = Array.from({ length: currentYear - firstYear + 1 }, (_, i) => firstYear + i);
-    const yearlyTexts: string[] = [];
-    const BATCH_SIZE = 3;
-    for (let i = 0; i < years.length; i += BATCH_SIZE) {
-      const batch = years.slice(i, i + BATCH_SIZE);
-      const batchResults = await Promise.all(
-        batch.map((year) =>
-          this.client.queryRawText!({
-            metrics: [SummarizedActivityMetrics.distanceM],
-            start: `${year}-01-01`,
-            end: year === currentYear ? endStr : `${year}-12-31`,
-          }).catch(() => "")
-        )
-      );
-      yearlyTexts.push(...batchResults);
-      if (i + BATCH_SIZE < years.length) await new Promise((r) => setTimeout(r, 200));
-    }
+    // [Certo] Substituído o loop anual por pedidos trimestrais
+    // (fetchInQuarterlyChunks) — mesma correção aplicada em getDailyTrend,
+    // depois de confirmar que mesmo 1 ano inteiro pode ultrapassar as 500
+    // linhas da API consoante o volume de atividades.
+    const queryRawText = this.client.queryRawText;
+    const allTimeText = await fetchInQuarterlyChunks(
+      queryRawText,
+      [SummarizedActivityMetrics.distanceM],
+      "2016-01-01",
+      endStr
+    );
     const allTimeDist = new Map<string, number[]>();
-    for (const yearText of yearlyTexts) {
-      for (const [date, vals] of extractValuesByDate(yearText, SummarizedActivityMetrics.distanceM)) {
-        allTimeDist.set(date, vals);
-      }
+    for (const [date, vals] of extractValuesByDate(allTimeText, SummarizedActivityMetrics.distanceM)) {
+      allTimeDist.set(date, vals);
     }
     let totalAllTimeKm = 0;
     for (const vals of allTimeDist.values()) totalAllTimeKm += sum(vals) / 1000;
@@ -1138,7 +1124,7 @@ export class FreddyDataService {
     // tem 18 semanas, sub-contando sempre que 1 de Janeiro caía fora dessa
     // janela (quase todo o ano). Agora soma a partir do histórico completo
     // (allTimeDist, já corrigido acima) fundido com os dados recentes.
-    const ytdStart = `${currentYear}-01-01`;
+    const ytdStart = `${end.getFullYear()}-01-01`;
     let totalYtdKm = 0;
     for (const [date, vals] of allTimeDist) {
       if (date >= ytdStart) totalYtdKm += sum(vals) / 1000;
@@ -1196,38 +1182,25 @@ export class FreddyDataService {
     if (!this.client.queryRawText) {
       throw new Error("Este client não implementa queryRawText — necessário para a tendência diária.");
     }
+    const queryRawText = this.client.queryRawText;
     const end = new Date();
     const start = new Date(end);
     start.setFullYear(start.getFullYear() - 2);
     const startStr = start.toISOString().slice(0, 10);
     const endStr = end.toISOString().slice(0, 10);
 
-    const recentTextPromise = this.client.queryRawText({
+    const recentTextPromise = queryRawText({
       metrics: [RunActivityMetrics.distanceM, RunActivityMetrics.durationSec, RunActivityMetrics.activeKcal],
       start: startStr,
       end: endStr,
     });
 
-    const firstYear = start.getFullYear();
-    const lastYear = end.getFullYear();
-    const years = Array.from({ length: lastYear - firstYear + 1 }, (_, i) => firstYear + i);
-    const summarizedTexts: string[] = [];
-    const BATCH_SIZE = 3; // mesmo equilíbrio velocidade/rate-limit já validado noutros sítios da app
-    for (let i = 0; i < years.length; i += BATCH_SIZE) {
-      const batch = years.slice(i, i + BATCH_SIZE);
-      const batchResults = await Promise.all(
-        batch.map((year) =>
-          this.client.queryRawText!({
-            metrics: [SummarizedActivityMetrics.distanceM, SummarizedActivityMetrics.durationSec, SummarizedActivityMetrics.calories],
-            start: year === firstYear ? startStr : `${year}-01-01`,
-            end: year === lastYear ? endStr : `${year}-12-31`,
-          }).catch(() => "")
-        )
-      );
-      summarizedTexts.push(...batchResults);
-      if (i + BATCH_SIZE < years.length) await new Promise((r) => setTimeout(r, 200));
-    }
-    const summarizedText = summarizedTexts.join("\n");
+    const summarizedText = await fetchInQuarterlyChunks(
+      queryRawText,
+      [SummarizedActivityMetrics.distanceM, SummarizedActivityMetrics.durationSec, SummarizedActivityMetrics.calories],
+      startStr,
+      endStr
+    );
     const recentText = await recentTextPromise;
 
     const recentDist = extractValuesByDate(recentText, RunActivityMetrics.distanceM);
@@ -1704,6 +1677,48 @@ function mapToRunActivityDetail(raw: Record<string, unknown>): RunActivitySummar
   };
 }
 const YOY_DATE_HEADER_RE = /^(\d{4}-\d{2}-\d{2})(?:T\d{2}:\d{2})?:\s*$/;
+
+/**
+ * [Certo] Confirmado por teste real: mesmo UM ANO inteiro (3 métricas,
+ * ~150 atividades/ano para este utilizador) ultrapassa as 500 linhas da
+ * API do Freddy e corta silenciosamente os meses mais antigos (testado:
+ * pedido de 2025 inteiro cortou em 2 de março, perdendo Jan/Fev por
+ * completo). Esta função substitui os pedidos "ano a ano" por pedidos
+ * TRIMESTRAIS (margem de segurança ~4x maior), em lotes de 3 em
+ * paralelo com pausa entre lotes — mesmo equilíbrio velocidade/limite
+ * já validado noutros sítios da app.
+ */
+async function fetchInQuarterlyChunks(
+  queryRawText: (args: { metrics: string[]; start?: string; end?: string }) => Promise<string>,
+  metrics: string[],
+  startStr: string,
+  endStr: string
+): Promise<string> {
+  const start = new Date(`${startStr}T00:00:00`);
+  const end = new Date(`${endStr}T00:00:00`);
+
+  const chunks: { from: string; to: string }[] = [];
+  let cursor = new Date(start.getFullYear(), Math.floor(start.getMonth() / 3) * 3, 1);
+  while (cursor <= end) {
+    const chunkStart = cursor < start ? start : cursor;
+    const quarterEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 3, 0); // último dia do trimestre
+    const chunkEnd = quarterEnd > end ? end : quarterEnd;
+    chunks.push({ from: chunkStart.toISOString().slice(0, 10), to: chunkEnd.toISOString().slice(0, 10) });
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 3, 1);
+  }
+
+  const texts: string[] = [];
+  const BATCH_SIZE = 3;
+  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+    const batch = chunks.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map((c) => queryRawText({ metrics, start: c.from, end: c.to }).catch(() => ""))
+    );
+    texts.push(...batchResults);
+    if (i + BATCH_SIZE < chunks.length) await new Promise((r) => setTimeout(r, 200));
+  }
+  return texts.join("\n");
+}
 
 /** Extrai valores escalares de uma métrica, agrupados por data (cabeçalho "YYYY-MM-DD:"). */
 function extractValuesByDate(text: string, metricName: string): Map<string, number[]> {

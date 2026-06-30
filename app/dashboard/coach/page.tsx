@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { DashboardNav } from "@/components/dashboard/nav";
 import { Send, MessageCircle } from "lucide-react";
+import { MarkdownLite } from "@/components/dashboard/markdown-lite";
 
 interface Message {
   role: "user" | "assistant";
@@ -10,9 +11,9 @@ interface Message {
 }
 
 const SUGGESTIONS = [
+  "Que treino posso fazer hoje?",
   "Estou apto para um treino de séries amanhã?",
   "Como está a minha forma atual?",
-  "Porque desceu o meu VO2 Max?",
   "Devo correr hoje ou descansar?",
 ];
 
@@ -102,7 +103,7 @@ export default function CoachPage() {
                   m.role === "user" ? "bg-emerald-600 text-white" : "border border-slate-800 bg-slate-900 text-slate-200"
                 }`}
               >
-                {m.content}
+                {m.role === "assistant" ? <MarkdownLite content={m.content} /> : m.content}
               </div>
             </div>
           ))}
