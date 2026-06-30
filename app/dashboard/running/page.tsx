@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { DashboardNav } from "@/components/dashboard/nav";
 import { MonthlyTrendChart, type DailyTrendPoint } from "@/components/dashboard/monthly-trend-chart";
 import {

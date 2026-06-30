@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { ShoppingBag } from "lucide-react";
 import { DashboardNav } from "@/components/dashboard/nav";
 import { Card, CardTitle } from "@/components/ui/card";

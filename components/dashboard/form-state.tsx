@@ -2,7 +2,7 @@
 
 import { Card, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer } from "recharts";
+import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer, Tooltip } from "recharts";
 
 export interface FormBannerData {
   message: string; // ex: "Forma equilibrada. ACWR 1.1. Boa janela para intensidade."
@@ -42,6 +42,11 @@ export function FormRadarCard({ data }: { data: RadarDimension[] }) {
           <RadarChart data={data}>
             <PolarGrid stroke="#1e293b" strokeWidth={0.75} />
             <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+            <Tooltip
+              contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", fontSize: 12 }}
+              labelStyle={{ color: "#cbd5e1" }}
+              formatter={(value: number) => [`${value}/100`, "Valor"]}
+            />
             <Radar dataKey="value" stroke="#34d399" strokeWidth={1.5} fill="#34d399" fillOpacity={0.12} />
           </RadarChart>
         </ResponsiveContainer>

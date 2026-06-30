@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { DashboardNav } from "@/components/dashboard/nav";
 import { ReadinessCard, type ReadinessCardData } from "@/components/dashboard/readiness-card";
 import { TrainingLoadCard, type TrainingLoadCardData } from "@/components/dashboard/training-load-card";
@@ -290,18 +292,19 @@ export default async function DashboardPage() {
   );
 
   const tsb = trainingLoadResult.data.tsb;
-  const tsbDescription =
-    tsb === null
-      ? "sem dado de TSB disponível"
-      : tsb > 5
-        ? "fresca — boa janela para subir intensidade"
-        : tsb >= -10
-          ? "equilibrada — janela segura para manter ou subir intensidade com moderação"
-          : tsb >= -20
-            ? "com fadiga acumulada — considere reduzir volume nos próximos dias"
-            : "em sobrecarga — recomenda-se descanso ou treino muito leve";
-  const formMessage = `Forma ${tsbDescription}. TSB ${tsb !== null ? (tsb > 0 ? "+" : "") + tsb : "—"} (CTL ${trainingLoadResult.data.ctl?.toFixed(1) ?? "—"} / ATL ${trainingLoadResult.data.atl?.toFixed(1) ?? "—"}).`;
-  const formTone: "emerald" | "amber" | "red" = tsb === null ? "amber" : tsb > 5 ? "emerald" : tsb >= -10 ? "emerald" : tsb >= -20 ? "amber" : "red";
+  const composite = readinessResult.data.compositeScore;
+  // [Certo] Corrigido: o banner usava só TSB, o Consultor de Treino usava
+  // o composto (TSB+HRV+FC+sono+stress) — duas "fontes da verdade"
+  // diferentes para a mesma pergunta davam vereditos que pareciam
+  // contraditórios (ex: "forma equilibrada" vs "sinais mistos"). Agora o
+  // banner usa o mesmo composto e a mesma recomendação-base do Consultor,
+  // com o TSB só como detalhe complementar, não como veredito principal.
+  const formMessage =
+    composite !== null
+      ? `${readinessResult.data.recommendation} (Score composto ${composite}/100). TSB ${tsb !== null ? (tsb > 0 ? "+" : "") + tsb : "—"} (CTL ${trainingLoadResult.data.ctl?.toFixed(1) ?? "—"} / ATL ${trainingLoadResult.data.atl?.toFixed(1) ?? "—"}).`
+      : `Sem sinais frescos suficientes para uma avaliação composta. TSB ${tsb !== null ? (tsb > 0 ? "+" : "") + tsb : "—"} (CTL ${trainingLoadResult.data.ctl?.toFixed(1) ?? "—"} / ATL ${trainingLoadResult.data.atl?.toFixed(1) ?? "—"}).`;
+  const formTone: "emerald" | "amber" | "red" =
+    composite === null ? "amber" : composite >= 75 ? "emerald" : composite >= 55 ? "amber" : "red";
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">

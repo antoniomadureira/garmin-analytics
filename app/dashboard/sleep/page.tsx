@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { Moon, Clock, Activity } from "lucide-react";
 import { DashboardNav } from "@/components/dashboard/nav";
 import { StatTile } from "@/components/ui/stat-tile";
