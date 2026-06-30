@@ -119,70 +119,85 @@ function buildSeriesCustomRange(daily: DailyTrendPoint[], startStr: string, endS
     }));
 }
 
+/** Soma valores de byDate cujo valor de data (string ISO) está no intervalo [fromStr, toStr], inclusive. */
+function sumInRange(byDate: Map<string, number>, fromStr: string, toStr: string): number {
+  let total = 0;
+  for (const [dateStr, val] of byDate) {
+    if (dateStr >= fromStr && dateStr <= toStr) total += val;
+  }
+  return total;
+}
+function lastDayOfMonthStr(year: number, month: number): string {
+  return new Date(year, month + 1, 0).toISOString().slice(0, 10);
+}
+function firstDayOfMonthStr(year: number, month: number): string {
+  return new Date(year, month, 1).toISOString().slice(0, 10);
+}
+
 /**
- * [Certo] Para comparação homóloga, a forma mais clara é cumulativo
- * alinhado por "dia N desde o início do período" (não por data
- * absoluta) — assim as duas linhas (atual vs anterior) ficam no mesmo
- * eixo X e dá para ver de imediato se está à frente ou atrás do ano
- * passado, em vez de duas curvas em datas diferentes lado a lado.
+ * [Certo] Reescrito por completo — a versão anterior usava um índice de
+ * "dia desde o início" com soma cumulativa em blocos, que se confirmou
+ * dar um total errado (970km vs ~1390km reais confirmados por consulta
+ * direta ao Freddy para Jan-Jul 2025). A nova versão agrega por MÊS DE
+ * CALENDÁRIO (mais simples de verificar, soma direta por intervalo de
+ * datas) e usa os mesmos rótulos de mês (JAN/FEV/...) do gráfico normal,
+ * como pedido — eixo X igual com ou sem comparação ativa.
+ * Para ranges curtos (7D/1M, ≤35 dias), mantém granularidade diária.
  */
 function buildComparisonSeries(daily: DailyTrendPoint[], range: Range, metric: Metric) {
   const today = new Date();
   const currentStart = rangeStartDate(range, today);
-  const currentStartStr = currentStart.toISOString().slice(0, 10);
   const todayStr = today.toISOString().slice(0, 10);
-
   const daysSpan = Math.round((today.getTime() - currentStart.getTime()) / 86400000);
 
-  const prevStart = new Date(currentStart);
-  prevStart.setFullYear(prevStart.getFullYear() - 1);
-  const prevEnd = new Date(today);
-  prevEnd.setFullYear(prevEnd.getFullYear() - 1);
-  const prevStartStr = prevStart.toISOString().slice(0, 10);
-  const prevEndStr = prevEnd.toISOString().slice(0, 10);
-
   const valueOf = (d: DailyTrendPoint) => (metric === "distance" ? d.distanceKm : metric === "duration" ? d.durationH : d.caloriesKcal);
-
   const byDate = new Map(daily.map((d) => [d.date, valueOf(d)]));
 
-  const points: { dayIndex: number; label: string; current: number | null; previous: number | null }[] = [];
+  const points: { label: string; current: number | null; previous: number | null }[] = [];
   let cumCurrent = 0;
   let cumPrevious = 0;
-  // [Provável] Granularidade semanal para períodos longos (evita 365 pontos ilegíveis), diária para 7D/1M.
-  const stepDays = daysSpan <= 35 ? 1 : 7;
 
-  for (let i = 0; i <= daysSpan; i += stepDays) {
-    const curDate = new Date(currentStart);
-    curDate.setDate(curDate.getDate() + i);
-    const curStr = curDate.toISOString().slice(0, 10);
-    if (curStr > todayStr) break;
-
-    const prevDate = new Date(prevStart);
-    prevDate.setDate(prevDate.getDate() + i);
-    const prevStr = prevDate.toISOString().slice(0, 10);
-
-    // soma o intervalo [i, i+stepDays) em vez de só o dia pontual
-    for (let j = 0; j < stepDays; j++) {
-      const cd = new Date(currentStart);
-      cd.setDate(cd.getDate() + i + j);
-      const cdStr = cd.toISOString().slice(0, 10);
-      if (cdStr <= todayStr) cumCurrent += byDate.get(cdStr) ?? 0;
-
-      const pd = new Date(prevStart);
-      pd.setDate(pd.getDate() + i + j);
+  if (daysSpan <= 35) {
+    // Granularidade diária para ranges curtos.
+    const prevStart = new Date(currentStart);
+    prevStart.setFullYear(prevStart.getFullYear() - 1);
+    const d = new Date(currentStart);
+    const pd = new Date(prevStart);
+    while (d <= today) {
+      const dStr = d.toISOString().slice(0, 10);
       const pdStr = pd.toISOString().slice(0, 10);
-      if (pdStr <= prevEndStr) cumPrevious += byDate.get(pdStr) ?? 0;
+      cumCurrent += byDate.get(dStr) ?? 0;
+      cumPrevious += byDate.get(pdStr) ?? 0;
+      points.push({ label: `${dStr.slice(8, 10)}/${dStr.slice(5, 7)}`, current: roundTo(cumCurrent, 1), previous: roundTo(cumPrevious, 1) });
+      d.setDate(d.getDate() + 1);
+      pd.setDate(pd.getDate() + 1);
     }
+  } else {
+    // Granularidade mensal — mesmos rótulos do gráfico normal (JAN/FEV/...).
+    let cursor = new Date(currentStart.getFullYear(), currentStart.getMonth(), 1);
+    const endMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    while (cursor <= endMonth) {
+      const y = cursor.getFullYear();
+      const m = cursor.getMonth();
+      const isCurrentMonth = y === today.getFullYear() && m === today.getMonth();
 
-    points.push({
-      dayIndex: i,
-      label: `D${i}`,
-      current: curStr <= todayStr ? roundTo(cumCurrent, 1) : null,
-      previous: roundTo(cumPrevious, 1),
-    });
+      const curFrom = firstDayOfMonthStr(y, m);
+      const curTo = isCurrentMonth ? todayStr : lastDayOfMonthStr(y, m);
+      cumCurrent += sumInRange(byDate, curFrom, curTo);
+
+      const py = y - 1;
+      const prevFrom = firstDayOfMonthStr(py, m);
+      const prevTo = isCurrentMonth ? new Date(py, m, today.getDate()).toISOString().slice(0, 10) : lastDayOfMonthStr(py, m);
+      cumPrevious += sumInRange(byDate, prevFrom, prevTo);
+
+      points.push({ label: MONTH_PT[m], current: roundTo(cumCurrent, 1), previous: roundTo(cumPrevious, 1) });
+      cursor = new Date(y, m + 1, 1);
+    }
   }
 
-  return { points, currentLabel: `${currentStartStr.slice(0, 4)} (atual)`, previousLabel: `${prevStartStr.slice(0, 4)}` };
+  const currentStartStr = currentStart.toISOString().slice(0, 10);
+  const prevYearLabel = String(currentStart.getFullYear() - 1);
+  return { points, currentLabel: `${currentStartStr.slice(0, 4)} (atual)`, previousLabel: prevYearLabel };
 }
 
 export function MonthlyTrendChart({ data }: { data: DailyTrendPoint[] }) {
