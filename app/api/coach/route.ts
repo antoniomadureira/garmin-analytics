@@ -79,13 +79,26 @@ const SYSTEM_PROMPT_BASE = `Você é um treinador de corrida de longa distância
 
 Para perguntas gerais (ex: "como está a minha forma", "estou apto para treinar"), seja conciso (3-6 frases).
 
-Para pedidos de um TREINO ESPECÍFICO para hoje (ex: "que treino posso fazer hoje", "dá-me um treino"), responda SEMPRE neste formato estruturado em Markdown, sem exceção:
-- Um título de nível 3 (###) com emoji e o nome do treino, refletindo o tipo adequado aos sinais do dia (ex: corrida fácil/regenerativa se os sinais forem fracos, fartlek/séries/limiar se forem bons).
-- Uma frase de contexto a seguir ao título, ligando o treino aos sinais reais do dia.
-- Secções numeradas em negrito (**Aquecimento:**, **Sessão Principal:**, **Arrefecimento:**), cada uma com sub-pontos em lista, incluindo duração em minutos e, sempre que possível, zona de FC em bpm — usa as zonas de FC reais do atleta se fornecidas no contexto; se não houver zonas reais, usa termos qualitativos (fácil/moderado/forte) em vez de inventar bpm.
-- Termina com **🎯 Objetivo:** (1 frase) e **💡 Pós-Treino:** (1 frase sobre hidratação/recuperação).
-- Usa emojis com moderação (1-2 por secção) e termina com uma frase curta de incentivo pelo nome do atleta se o souberes, ou genérica caso contrário.
-Não acrescentes avisos sobre o formato nem expliques que estás a seguir um template — vai direto ao conteúdo.`;
+Para pedidos de um TREINO ESPECÍFICO para hoje, responda SEMPRE com DUAS partes na mesma mensagem, nesta ordem exacta:
+
+PARTE 1 — Markdown legível para o utilizador:
+- Título ### com emoji e nome do treino
+- Frase de contexto ligando o treino aos sinais do dia
+- Secções **Aquecimento:**, **Sessão Principal:**, **Arrefecimento:** com sub-pontos e zonas de FC reais quando disponíveis
+- **🎯 Objetivo:** e **💡 Pós-Treino:** no final
+
+PARTE 2 — Bloco estruturado para o Intervals.icu (obrigatório, mesmo que simples):
+Imediatamente a seguir ao Markdown, adiciona exactamente este separador e bloco:
+---ICU_WORKOUT---
+<name>Nome do treino</name>
+<description>Escreve aqui os passos no formato de texto do Intervals.icu:
+- Aquecimento: 15:00 easy
+- 6x( 800m @3:50-4:00/km + 2:00 easy )
+- Arrefecimento: 10:00 easy
+Usa a sintaxe: duração em MM:SS ou distância em m/km, @ritmo ou @FC, x( ... ) para repetições.</description>
+---ICU_END---
+
+Não expliques o formato nem menciones os separadores ao utilizador — eles são invisíveis na app.`;
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.GROQ_API_KEY;
@@ -127,6 +140,21 @@ export async function POST(req: NextRequest) {
   }
 
   const data = await groqRes.json();
-  const reply = data.choices?.[0]?.message?.content ?? "Sem resposta.";
-  return NextResponse.json({ reply });
+  const fullReply = data.choices?.[0]?.message?.content ?? "Sem resposta.";
+
+  // Extrai o bloco ICU do modelo, invisível para o utilizador
+  const icuMatch = fullReply.match(/---ICU_WORKOUT---([\s\S]*?)---ICU_END---/);
+  const icuRaw = icuMatch ? icuMatch[1].trim() : null;
+  const reply = fullReply.replace(/---ICU_WORKOUT---[\s\S]*?---ICU_END---/, "").trim();
+
+  let icuWorkout: { name: string; description: string } | null = null;
+  if (icuRaw) {
+    const nameMatch = icuRaw.match(/<name>([\s\S]*?)<\/name>/);
+    const descMatch = icuRaw.match(/<description>([\s\S]*?)<\/description>/);
+    if (nameMatch && descMatch) {
+      icuWorkout = { name: nameMatch[1].trim(), description: descMatch[1].trim() };
+    }
+  }
+
+  return NextResponse.json({ reply, icuWorkout });
 }

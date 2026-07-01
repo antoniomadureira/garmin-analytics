@@ -29,14 +29,21 @@ export default function CoachPage() {
   const startedRef = useRef(false);
   const [pushState, setPushState] = useState<Record<number, "idle" | "sending" | "done" | "error">>({});
   const [pushUrls, setPushUrls] = useState<Record<number, string>>({});
+  const [icuWorkouts, setIcuWorkouts] = useState<Record<number, { name: string; description: string }>>({});
 
-  async function pushToIntervals(index: number, content: string) {
+  async function pushToIntervals(index: number) {
+    const workout = icuWorkouts[index];
+    if (!workout) return;
     setPushState((s) => ({ ...s, [index]: "sending" }));
     try {
       const res = await fetch("/api/coach/push-to-intervals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({
+          name: workout.name,
+          description: workout.description,
+          date: new Date().toISOString().slice(0, 10),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erro desconhecido.");
@@ -101,6 +108,9 @@ export default function CoachPage() {
         return;
       }
       setMessages([...newMessages, { role: "assistant", content: data.reply }]);
+      if (data.icuWorkout) {
+        setIcuWorkouts((prev) => ({ ...prev, [newMessages.length]: data.icuWorkout }));
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -123,23 +133,23 @@ export default function CoachPage() {
                 }`}
               >
                 {m.role === "assistant" ? <MarkdownLite content={m.content} /> : m.content}
-                {m.role === "assistant" && m.content.includes("###") && (
+                {m.role === "assistant" && icuWorkouts[i] && (
                   <div className="mt-3 border-t border-slate-800 pt-2">
                     {pushState[i] === "done" ? (
                       <a href={pushUrls[i]} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">
-                        ✓ Enviado para o Intervals.icu — abrir
+                        ✓ Enviado — abrir calendário no Intervals.icu
                       </a>
                     ) : (
                       <button
-                        onClick={() => pushToIntervals(i, m.content)}
+                        onClick={() => pushToIntervals(i)}
                         disabled={pushState[i] === "sending"}
                         className="flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-400 transition hover:border-cyan-700 hover:text-cyan-400 disabled:opacity-50"
                       >
                         <CalendarPlus size={13} />
-                        {pushState[i] === "sending" ? "A enviar…" : "Enviar para o Intervals.icu (hoje)"}
+                        {pushState[i] === "sending" ? "A enviar…" : "Adicionar ao Intervals.icu → Garmin"}
                       </button>
                     )}
-                    {pushState[i] === "error" && <p className="mt-1 text-[11px] text-amber-500">Falha ao enviar — tente novamente.</p>}
+                    {pushState[i] === "error" && <p className="mt-1 text-[11px] text-amber-500">Falha ao enviar — verifique as env vars (INTERVALS_ICU_API_KEY).</p>}
                   </div>
                 )}
               </div>

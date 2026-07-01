@@ -46,5 +46,6 @@ export async function pushWorkoutToIntervals(params: {
     throw new Error(`Falha ao criar treino no Intervals.icu: ${res.status} ${await res.text()}`);
   }
   const data = (await res.json()) as { id: number };
-  return { id: data.id, url: `https://intervals.icu/calendar?eventId=${data.id}` };
+  // [Certo] Formato real do URL do calendário do Intervals.icu: abrir pelo dia
+  return { id: data.id, url: `https://intervals.icu/calendar/${params.dateStr}` };
 }
