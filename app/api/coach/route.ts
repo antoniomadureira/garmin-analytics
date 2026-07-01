@@ -36,11 +36,15 @@ async function buildContextSummary(): Promise<string> {
     service.getWellnessWeekly(8).catch(() => []),
   ]);
   await new Promise((r) => setTimeout(r, 250));
-  const [loadEntries, running, composed, zones] = await Promise.all([
+  const [loadEntries, running, composed, zones, todayActivities] = await Promise.all([
     service.getTrainingLoadSummary(7).catch(() => []),
     service.getWeeklyRunningSummary(7).catch(() => null),
     service.getComposedReadinessFromWellness(wellness).catch(() => null),
     getAthleteZones().catch(() => null),
+    // [Certo] activity_* cobre os últimos ~35 dias com dados frescos —
+    // é a única fonte que inclui treinos do próprio dia (summarizedActivity_*
+    // tem atraso confirmado de ~30 dias). Pedido mínimo: 1 dia.
+    service.getRecentActivities(1).catch(() => []),
   ]);
   const latestReadiness = readinessEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), readinessEntries[0]);
   const latestLoad = loadEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), loadEntries[0]);
@@ -69,7 +73,17 @@ async function buildContextSummary(): Promise<string> {
         }`
       : "Sem dados recentes de Training Readiness do Garmin.",
     latestLoad ? `ACWR (Garmin, complementar): status ${latestLoad.acwrStatus}, ratio ${latestLoad.acwrRatio}.` : "",
-    running ? `Últimos 7 dias de corrida: ${running.totalDistanceKm} km em ${running.runCount} corridas.` : "Sem dados de corrida dos últimos 7 dias.",
+    (() => {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayRuns = todayActivities.filter((a) => a.date === todayStr);
+      if (todayRuns.length === 0) return "Sem atividade registada hoje ainda.";
+      const totalKm = todayRuns.reduce((s, a) => s + a.distanceKm, 0);
+      const totalMin = Math.round(todayRuns.reduce((s, a) => s + a.durationSec, 0) / 60);
+      return `[TREINO DE HOJE JÁ REALIZADO — usa isto para ajustar a resposta]: ${todayRuns.length} atividade(s) hoje, ${totalKm.toFixed(1)}km em ${totalMin}min. ${
+        todayRuns.length > 0 ? `Pace médio: ${todayRuns[0].paceMinPerKm?.toFixed(2) ?? "—"}min/km.` : ""
+      } Se o utilizador pergunta "que treino posso fazer hoje" DEPOIS de já ter treinado, reconhece isso explicitamente e adapta a recomendação (ex: recuperação activa, descanso, ou segundo treino leve se o TSB o permitir).`;
+    })(),
+    running ? `Volume últimos 7 dias (summarized, pode não incluir hoje): ${running.totalDistanceKm} km em ${running.runCount} corridas.` : "Sem dados de volume semanal.",
   ]
     .filter(Boolean)
     .join("\n");
