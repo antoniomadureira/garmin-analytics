@@ -137,7 +137,7 @@ export default function CoachPage() {
                   <div className="mt-3 border-t border-slate-800 pt-2">
                     {pushState[i] === "done" ? (
                       <a href={pushUrls[i]} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">
-                        ✓ Enviado — abrir calendário no Intervals.icu
+                        ✓ Enviado — ver no calendário do Intervals.icu (treino aparece hoje)
                       </a>
                     ) : (
                       <button

@@ -101,15 +101,31 @@ PARTE 1 — Markdown legível para o utilizador:
 - Secções **Aquecimento:**, **Sessão Principal:**, **Arrefecimento:** com sub-pontos e zonas de FC reais quando disponíveis
 - **🎯 Objetivo:** e **💡 Pós-Treino:** no final
 
-PARTE 2 — Bloco estruturado para o Intervals.icu (obrigatório, mesmo que simples):
+PARTE 2 — Bloco estruturado para o Intervals.icu (obrigatório):
 Imediatamente a seguir ao Markdown, adiciona exactamente este separador e bloco:
 ---ICU_WORKOUT---
-<name>Nome do treino</name>
-<description>Escreve aqui os passos no formato de texto do Intervals.icu:
-- Aquecimento: 15:00 easy
-- 6x( 800m @3:50-4:00/km + 2:00 easy )
-- Arrefecimento: 10:00 easy
-Usa a sintaxe: duração em MM:SS ou distância em m/km, @ritmo ou @FC, x( ... ) para repetições.</description>
+<name>Nome do treino em PT</name>
+<description>
+Usa EXACTAMENTE esta sintaxe de texto do Intervals.icu (o servidor faz o parse e cria passos estruturados):
+
+Warmup
+- 15m 65-70% HR
+
+6x
+- 800mtr 3:50-4:00/km Pace
+- 2m Z1
+
+Cooldown
+- 10m 60-65% HR
+
+Regras obrigatórias:
+- "m" significa minutos, NUNCA metros. Usa "mtr" ou "km" para distâncias (ex: 800mtr, 1.6km).
+- Pace no formato MM:SS/km (ex: 3:50-4:00/km Pace).
+- Zonas: Z1, Z2, Z3, Z4, Z5 ou percentagem HR (ex: 70-80% HR). Usa as zonas reais do atleta se fornecidas.
+- Repetições: número seguido de "x" numa linha própria, depois os passos indentados com "- ".
+- Secções separadas por linha em branco. Nomes de secção livres (Warmup, Main Set, Cooldown, etc.).
+Não expliques o formato — vai direto ao conteúdo dentro das tags.
+</description>
 ---ICU_END---
 
 Não expliques o formato nem menciones os separadores ao utilizador — eles são invisíveis na app.`;
