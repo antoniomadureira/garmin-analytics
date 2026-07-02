@@ -96,11 +96,18 @@ export async function getFreddyDataService(): Promise<FreddyDataService> {
       try {
         return JSON.parse(firstText) as Record<string, unknown>;
       } catch {
+        // [Certo] "No data found for metrics: X" é uma resposta válida do
+        // Freddy (ex: trainingReadiness com atraso de 5-6 dias, ou período
+        // sem atividade). Não é um erro — é um resultado vazio legítimo.
+        if (firstText.startsWith("No data found")) {
+          return {};
+        }
         const parsed = parseQueryMetricsText(firstText);
         if (Object.keys(parsed).length === 0) {
-          throw new Error(
-            `Não foi possível extrair nenhum bloco raw do texto devolvido. Primeiros 200 chars: ${firstText.slice(0, 200)}`
-          );
+          // Texto inesperado mas não bloqueante — devolver vazio em vez de
+          // rebentar toda a secção de readiness por causa de 1 métrica.
+          console.warn(`query_metrics devolveu texto não parseável: ${firstText.slice(0, 200)}`);
+          return {};
         }
         return parsed;
       }

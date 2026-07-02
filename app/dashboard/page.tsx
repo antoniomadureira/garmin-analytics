@@ -10,6 +10,7 @@ import { RecoveryCard, type RecoveryCardData } from "@/components/dashboard/reco
 import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
 import { FormBanner, FormRadarCard, type RadarDimension } from "@/components/dashboard/form-state";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
+import { getShoesAndActivities } from "@/lib/strava-lab/client";
 import { StatTile } from "@/components/ui/stat-tile";
 import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
 import { Heart, Zap, Moon, Activity as ActivityIcon, Gauge } from "lucide-react";
@@ -286,6 +287,19 @@ export default async function DashboardPage() {
     loadGlanceExtra(service),
   ]);
 
+  // Fallback Strava: quando Freddy está completamente indisponível, mostrar
+  // atividades recentes do Strava como contexto alternativo no Painel.
+  let stravaFallbackActivities: { id: string; name: string; date: string; distanceKm: number; durationSec: number }[] = [];
+  const freddy_indisponivel = !service || (
+    !readinessResult.isReal && !trainingLoadResult.isReal && !runningResult.isReal
+  );
+  if (freddy_indisponivel) {
+    try {
+      const { activities } = await getShoesAndActivities();
+      stravaFallbackActivities = activities.slice(0, 8);
+    } catch { /* sem Strava também */ }
+  }
+
   const radarData = buildRadarData(
     trainingLoadResult.data.vo2Max,
     readinessResult.data.compositeScore ?? readinessResult.data.garminScore ?? 50,
@@ -356,6 +370,36 @@ export default async function DashboardPage() {
           <YoyKpiGrid kpis={yoyResult.data} />
           <CardSourceNote isReal={yoyResult.isReal} error={yoyResult.error} />
         </section>
+
+        {stravaFallbackActivities.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-sm font-medium text-slate-400">
+              Atividades Recentes — Strava
+              <span className="ml-2 text-[10px] text-amber-500">Freddy indisponível — dados Garmin em falta</span>
+            </h2>
+            <div className="space-y-2">
+              {stravaFallbackActivities.map((a) => {
+                const pace = a.distanceKm > 0 ? (a.durationSec / 60 / a.distanceKm) : 0;
+                const paceMin = Math.floor(pace);
+                const paceSec = Math.round((pace - paceMin) * 60);
+                const dur = `${Math.floor(a.durationSec / 60)}min`;
+                return (
+                  <div key={a.id} className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm">
+                    <div>
+                      <span className="font-medium text-slate-200">{a.name}</span>
+                      <span className="ml-2 text-xs text-slate-500">{a.date}</span>
+                    </div>
+                    <div className="flex gap-4 text-xs text-slate-400">
+                      <span>{a.distanceKm.toFixed(1)} km</span>
+                      <span>{dur}</span>
+                      {pace > 0 && <span>{paceMin}:{String(paceSec).padStart(2, "0")}/km</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         <section className="space-y-4">
           <h2 className="text-sm font-medium text-slate-400">Estado de Forma</h2>
