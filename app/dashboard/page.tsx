@@ -165,30 +165,19 @@ async function loadRunningSummary(service: Awaited<ReturnType<typeof getFreddyDa
 async function loadRecoveryInsights(service: Awaited<ReturnType<typeof getFreddyDataService>> | null, connectError?: string): Promise<{ data: RecoveryCardData; isReal: boolean; error?: string }> {
   const mock: RecoveryCardData = {
     recoveryTimeHours: 18,
+    acuteLoad: 1.05,
     bodyBatteryMax: 92,
     bodyBatteryMin: 24,
     avgStress: 28,
-    recommendation: "Stress controlado e recuperação dentro do esperado. Sem necessidade de dia extra de descanso.",
+    hrv: 38,
+    hrvBaseline: 35,
+    restingHr: 54,
+    restingHrBaseline: 53,
   };
   if (!service) return { data: mock, isReal: false, error: connectError };
   try {
-    const battery = await service.getBodyBatteryWeekly(7);
-    const latest = battery.reduce((best, cur) => (!best || cur.date > best.date ? cur : best), battery[0]);
-    if (!latest) throw new Error("Sem registo de body battery no período pedido.");
-    const avgStress = latest.avgStress !== null ? Math.round(latest.avgStress) : null;
-    return {
-      data: {
-        recoveryTimeHours: null, // [Certo] depende de trainingReadiness_score, que tem atraso de sync confirmado — mostrar null em vez de inventar um valor sob a bandeira "dados reais"
-        bodyBatteryMax: latest.max ?? mock.bodyBatteryMax,
-        bodyBatteryMin: latest.min ?? mock.bodyBatteryMin,
-        avgStress: avgStress ?? mock.avgStress,
-        recommendation:
-          avgStress !== null && avgStress < 35
-            ? "Stress controlado e recuperação dentro do esperado. Sem necessidade de dia extra de descanso."
-            : "Stress acima do habitual nos últimos dias — considere um dia de recuperação ativa.",
-      },
-      isReal: true,
-    };
+    const insights = await service.getRecoveryInsights();
+    return { data: insights, isReal: true };
   } catch (err) {
     return { data: mock, isReal: false, error: humanizeError(err) };
   }
@@ -361,7 +350,7 @@ export default async function DashboardPage() {
             <StatTile icon={<Moon size={14} />} label="Sono" value={readinessResult.data.sleepScoreValue} unit="/100" sublabel="Última noite" accent="#a78bfa" />
             <StatTile icon={<ActivityIcon size={14} />} label="VO2 Max" value={trainingLoadResult.data.vo2Max} sublabel="Superior" accent="#34d399" />
             <StatTile icon={<Gauge size={14} />} label="TSB" value={trainingLoadResult.data.tsb !== null ? (trainingLoadResult.data.tsb > 0 ? `+${trainingLoadResult.data.tsb}` : trainingLoadResult.data.tsb) : null} sublabel="Hoje" accent="#fb923c" />
-            <StatTile icon={<Heart size={14} />} label="Stress" value={recoveryResult.data.avgStress} sublabel="Médio recente" accent="#f87171" />
+            <StatTile icon={<Heart size={14} />} label="Stress" value={recoveryResult.data.avgStress} sublabel="Médio hoje" accent="#f87171" />
           </div>
         </section>
 

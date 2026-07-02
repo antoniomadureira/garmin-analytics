@@ -839,6 +839,60 @@ export class FreddyDataService {
       .sort((a, b) => (a.date < b.date ? -1 : 1));
   }
 
+  /**
+   * Recuperação reformulada: tempo até recuperação, carga aguda,
+   * e deltas vs baseline pessoal (30 dias) para HRV e FC repouso.
+   * [Certo] trainingReadiness_recoveryTime vem em SEGUNDOS (confirmado
+   * em comentário no topo deste ficheiro — ÷3600 para horas).
+   */
+  async getRecoveryInsights(): Promise<{
+    recoveryTimeHours: number | null;
+    acuteLoad: number | null;
+    bodyBatteryMax: number | null;
+    bodyBatteryMin: number | null;
+    avgStress: number | null;
+    hrv: number | null;
+    hrvBaseline: number | null;
+    restingHr: number | null;
+    restingHrBaseline: number | null;
+  }> {
+    const readinessP = this.client.queryMetrics({
+      metrics: [TrainingReadinessMetrics.recoveryTime, TrainingReadinessMetrics.acuteLoad],
+      days: 10,
+    }).catch(() => ({}));
+    const batteryP = this.getBodyBatteryWeekly(2).catch(() => []);
+    const wellnessP = this.getWellnessWeekly(30).catch(() => []);
+    const [readiness, battery, wellness] = await Promise.all([readinessP, batteryP, wellnessP]);
+
+    const recoveryRaw = Object.values(readiness as Record<string, { recoveryTime?: number }>)
+      .map((v) => v?.recoveryTime ?? null).find((v) => v !== null) ?? null;
+    const recoveryTimeHours = recoveryRaw !== null ? Math.round((recoveryRaw as number) / 3600) : null;
+
+    const acuteLoad = (Object.values(readiness as Record<string, { acuteLoad?: number }>)
+      .map((v) => v?.acuteLoad ?? null).find((v) => v !== null) ?? null) as number | null;
+
+    const latestBattery = battery.length ? battery[battery.length - 1] : null;
+    const latest = wellness.length ? wellness[wellness.length - 1] : null;
+    const baseline = wellness.slice(0, -1);
+
+    const hrvValues = baseline.filter((w) => w.hrv !== null);
+    const hrvBaseline = hrvValues.length ? roundTo(hrvValues.reduce((s, w) => s + (w.hrv ?? 0), 0) / hrvValues.length, 1) : null;
+    const rhrValues = baseline.filter((w) => w.restingHr !== null);
+    const restingHrBaseline = rhrValues.length ? roundTo(rhrValues.reduce((s, w) => s + (w.restingHr ?? 0), 0) / rhrValues.length, 1) : null;
+
+    return {
+      recoveryTimeHours,
+      acuteLoad,
+      bodyBatteryMax: latestBattery?.max ?? null,
+      bodyBatteryMin: latestBattery?.min ?? null,
+      avgStress: latestBattery?.avgStress ? Math.round(latestBattery.avgStress) : null,
+      hrv: latest?.hrv ?? null,
+      hrvBaseline,
+      restingHr: latest?.restingHr ?? null,
+      restingHrBaseline,
+    };
+  }
+
   async getBodyBatteryWeekly(days = 7): Promise<
     { date: string; max: number | null; min: number | null; avgStress: number | null; maxStress: number | null }[]
   > {
