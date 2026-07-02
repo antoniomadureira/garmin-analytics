@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { Moon, Clock, Activity } from "lucide-react";
+import { humanizeError } from "@/lib/utils/error-message";
 import { DashboardNav } from "@/components/dashboard/nav";
 import { StatTile } from "@/components/ui/stat-tile";
 import { TrendLineChart } from "@/components/dashboard/trend-line-chart";
@@ -70,7 +71,7 @@ async function loadSleep(): Promise<{ data: SleepPageData; isReal: boolean; erro
       isReal: true,
     };
   } catch (err) {
-    return { data: mock, isReal: false, error: String(err) };
+    return { data: mock, isReal: false, error: humanizeError(err) };
   }
 }
 

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { Heart, TrendingUp, Zap, TrendingDown } from "lucide-react";
+import { humanizeError } from "@/lib/utils/error-message";
 import { DashboardNav } from "@/components/dashboard/nav";
 import { StatTile } from "@/components/ui/stat-tile";
 import { TrendLineChart } from "@/components/dashboard/trend-line-chart";
@@ -55,7 +56,7 @@ async function loadHeartRate(): Promise<{ data: HeartRatePageData; isReal: boole
       isReal: true,
     };
   } catch (err) {
-    return { data: mock, isReal: false, error: String(err) };
+    return { data: mock, isReal: false, error: humanizeError(err) };
   }
 }
 
@@ -85,7 +86,7 @@ async function loadActivityHr(): Promise<{ data: ActivityHrData; isReal: boolean
       isReal: true,
     };
   } catch (err) {
-    return { data: mock, isReal: false, error: String(err) };
+    return { data: mock, isReal: false, error: humanizeError(err) };
   }
 }
 

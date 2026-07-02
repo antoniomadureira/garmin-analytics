@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { Footprints, Target, TrendingUp } from "lucide-react";
+import { humanizeError } from "@/lib/utils/error-message";
 import { DashboardNav } from "@/components/dashboard/nav";
 import { StatTile } from "@/components/ui/stat-tile";
 import { Card } from "@/components/ui/card";
@@ -49,7 +50,7 @@ async function loadSteps(): Promise<{ data: StepsPageData; isReal: boolean; erro
       isReal: true,
     };
   } catch (err) {
-    return { data: mock, isReal: false, error: String(err) };
+    return { data: mock, isReal: false, error: humanizeError(err) };
   }
 }
 

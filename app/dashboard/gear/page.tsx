@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { ShoppingBag } from "lucide-react";
+import { humanizeError } from "@/lib/utils/error-message";
 import { DashboardNav } from "@/components/dashboard/nav";
 import { Card, CardTitle } from "@/components/ui/card";
 import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
@@ -17,7 +18,7 @@ async function loadGear(): Promise<{ data: StravaLabShoe[]; costs: Record<string
     if (shoes.length === 0) throw new Error("Sem equipamento registado no Strava.");
     return { data: shoes, costs, isReal: true };
   } catch (err) {
-    return { data: mock, costs: {}, isReal: false, error: String(err) };
+    return { data: mock, costs: {}, isReal: false, error: humanizeError(err) };
   }
 }
 

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+import { humanizeError } from "@/lib/utils/error-message";
 import { DashboardNav } from "@/components/dashboard/nav";
 import { ReadinessCard, type ReadinessCardData } from "@/components/dashboard/readiness-card";
 import { TrainingLoadCard, type TrainingLoadCardData } from "@/components/dashboard/training-load-card";
@@ -70,7 +71,7 @@ async function loadReadiness(service: Awaited<ReturnType<typeof getFreddyDataSer
       isReal: true,
     };
   } catch (err) {
-    return { data: mock, isReal: false, error: String(err) };
+    return { data: mock, isReal: false, error: humanizeError(err) };
   }
 }
 
@@ -113,7 +114,7 @@ async function loadTrainingLoad(service: Awaited<ReturnType<typeof getFreddyData
       isReal: true,
     };
   } catch (err) {
-    return { data: mock, isReal: false, error: String(err) };
+    return { data: mock, isReal: false, error: humanizeError(err) };
   }
 }
 
@@ -156,7 +157,7 @@ async function loadRunningSummary(service: Awaited<ReturnType<typeof getFreddyDa
       isReal: true,
     };
   } catch (err) {
-    return { data: mock, isReal: false, error: String(err) };
+    return { data: mock, isReal: false, error: humanizeError(err) };
   }
 }
 
@@ -188,7 +189,7 @@ async function loadRecoveryInsights(service: Awaited<ReturnType<typeof getFreddy
       isReal: true,
     };
   } catch (err) {
-    return { data: mock, isReal: false, error: String(err) };
+    return { data: mock, isReal: false, error: humanizeError(err) };
   }
 }
 
@@ -241,7 +242,7 @@ async function loadYoyKpis(service: Awaited<ReturnType<typeof getFreddyDataServi
       isReal: true,
     };
   } catch (err) {
-    return { data: mock, isReal: false, error: String(err) };
+    return { data: mock, isReal: false, error: humanizeError(err) };
   }
 }
 
@@ -257,7 +258,7 @@ async function loadGlanceExtra(service: Awaited<ReturnType<typeof getFreddyDataS
     // [Provável] HRV ainda não tem método dedicado — leitura direta via queryRawText, fora do FreddyDataService por simplicidade.
     return { data: { restingHr: hr.restingToday, hrvMs: null }, isReal: true };
   } catch (err) {
-    return { data: mock, isReal: false, error: String(err) };
+    return { data: mock, isReal: false, error: humanizeError(err) };
   }
 }
 
@@ -273,7 +274,7 @@ export default async function DashboardPage() {
   try {
     service = await getFreddyDataService();
   } catch (err) {
-    connectError = String(err);
+    connectError = humanizeError(err);
   }
 
   const [readinessResult, trainingLoadResult, yoyResult, runningResult, recoveryResult, glanceResult] = await Promise.all([
