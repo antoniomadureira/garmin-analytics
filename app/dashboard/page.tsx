@@ -8,12 +8,10 @@ import { TrainingLoadCard, type TrainingLoadCardData } from "@/components/dashbo
 import { RunningSummaryCard, type RunningSummaryCardData } from "@/components/dashboard/running-summary-card";
 import { RecoveryCard, type RecoveryCardData } from "@/components/dashboard/recovery-card";
 import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
-import { FormBanner, FormRadarCard, type RadarDimension } from "@/components/dashboard/form-state";
+import { ReadinessHero } from "@/components/dashboard/readiness-hero";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 import { getShoesAndActivities } from "@/lib/strava-lab/client";
-import { StatTile } from "@/components/ui/stat-tile";
 import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
-import { Heart, Zap, Moon, Activity as ActivityIcon, Gauge } from "lucide-react";
 
 // =============================================================================
 // [Provável] Tentamos dados reais para Readiness, TrainingLoad e VO2 Max
@@ -191,17 +189,6 @@ async function loadRecoveryInsights(service: Awaited<ReturnType<typeof getFreddy
  * para volume, etc.) são estimativas razoáveis para um corredor amador
  * de longa distância, não constantes oficiais — ajustar livremente.
  */
-function buildRadarData(vo2Max: number, readinessScore: number, weeklyKm: number, weeklyHrAvg: number | null): RadarDimension[] {
-  return [
-    { dimension: "Fitness", value: Math.min(100, Math.round((vo2Max / 80) * 100)) },
-    { dimension: "Frescura", value: readinessScore },
-    { dimension: "Volume", value: Math.min(100, Math.round((weeklyKm / 60) * 100)) },
-    { dimension: "Pace", value: 65 }, // [TODO] precisa de avgPaceMinPerKm real, não disponível nos loaders atuais
-    { dimension: "FC", value: weeklyHrAvg ? Math.max(0, Math.min(100, Math.round(100 - (weeklyHrAvg - 120)))) : 70 },
-    { dimension: "Elevação", value: 54 }, // [TODO] precisa do total de elevação semanal
-  ];
-}
-
 async function loadYoyKpis(service: Awaited<ReturnType<typeof getFreddyDataService>> | null, connectError?: string): Promise<{ data: YoyKpi[]; isReal: boolean; error?: string }> {
   const mock: YoyKpi[] = [
     { label: "Corridas", current: 105, previous: 87, unit: "" },
@@ -236,22 +223,6 @@ async function loadYoyKpis(service: Awaited<ReturnType<typeof getFreddyDataServi
   }
 }
 
-interface GlanceData {
-  restingHr: number | null;
-  hrvMs: number | null;
-}
-async function loadGlanceExtra(service: Awaited<ReturnType<typeof getFreddyDataService>> | null): Promise<{ data: GlanceData; isReal: boolean; error?: string }> {
-  const mock: GlanceData = { restingHr: 56, hrvMs: 31 };
-  if (!service) return { data: mock, isReal: false };
-  try {
-    const hr = await service.getHeartRateWeekly(3);
-    // [Provável] HRV ainda não tem método dedicado — leitura direta via queryRawText, fora do FreddyDataService por simplicidade.
-    return { data: { restingHr: hr.restingToday, hrvMs: null }, isReal: true };
-  } catch (err) {
-    return { data: mock, isReal: false, error: humanizeError(err) };
-  }
-}
-
 export default async function DashboardPage() {
   // [Certo] Uma única ligação MCP para a página toda — a versão anterior
   // chamava getFreddyDataService() 5 vezes em separado (uma por loader),
@@ -267,21 +238,17 @@ export default async function DashboardPage() {
     connectError = humanizeError(err);
   }
 
-  const [readinessResult, trainingLoadResult, yoyResult, runningResult, recoveryResult, glanceResult] = await Promise.all([
+  const [readinessResult, trainingLoadResult, yoyResult, runningResult, recoveryResult] = await Promise.all([
     loadReadiness(service, connectError),
     loadTrainingLoad(service, connectError),
     loadYoyKpis(service, connectError),
     loadRunningSummary(service, connectError),
     loadRecoveryInsights(service, connectError),
-    loadGlanceExtra(service),
   ]);
 
-  // Fallback Strava: quando Freddy está completamente indisponível, mostrar
-  // atividades recentes do Strava como contexto alternativo no Painel.
+  // Fallback Strava: quando Freddy está completamente indisponível
   let stravaFallbackActivities: { id: string; name: string; date: string; distanceKm: number; durationSec: number }[] = [];
-  const freddy_indisponivel = !service || (
-    !readinessResult.isReal && !trainingLoadResult.isReal && !runningResult.isReal
-  );
+  const freddy_indisponivel = !service || (!readinessResult.isReal && !trainingLoadResult.isReal && !runningResult.isReal);
   if (freddy_indisponivel) {
     try {
       const { activities } = await getShoesAndActivities();
@@ -289,89 +256,58 @@ export default async function DashboardPage() {
     } catch { /* sem Strava também */ }
   }
 
-  const radarData = buildRadarData(
-    trainingLoadResult.data.vo2Max,
-    readinessResult.data.compositeScore ?? readinessResult.data.garminScore ?? 50,
-    runningResult.data.weeklyDistanceKm,
-    null // [TODO] FC média semanal ainda não recolhida separadamente
-  );
-
-  const tsb = trainingLoadResult.data.tsb;
-  const composite = readinessResult.data.compositeScore;
-  // [Certo] Corrigido: o banner usava só TSB, o Consultor de Treino usava
-  // o composto (TSB+HRV+FC+sono+stress) — duas "fontes da verdade"
-  // diferentes para a mesma pergunta davam vereditos que pareciam
-  // contraditórios (ex: "forma equilibrada" vs "sinais mistos"). Agora o
-  // banner usa o mesmo composto e a mesma recomendação-base do Consultor,
-  // com o TSB só como detalhe complementar, não como veredito principal.
-  const formMessage =
-    composite !== null
-      ? `${readinessResult.data.recommendation} (Score composto ${composite}/100). TSB ${tsb !== null ? (tsb > 0 ? "+" : "") + tsb : "—"} (CTL ${trainingLoadResult.data.ctl?.toFixed(1) ?? "—"} / ATL ${trainingLoadResult.data.atl?.toFixed(1) ?? "—"}).`
-      : `Sem sinais frescos suficientes para uma avaliação composta. TSB ${tsb !== null ? (tsb > 0 ? "+" : "") + tsb : "—"} (CTL ${trainingLoadResult.data.ctl?.toFixed(1) ?? "—"} / ATL ${trainingLoadResult.data.atl?.toFixed(1) ?? "—"}).`;
-  const formTone: "emerald" | "amber" | "red" =
-    composite === null ? "amber" : composite >= 75 ? "emerald" : composite >= 55 ? "amber" : "red";
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <DashboardNav />
 
-      <main className="mx-auto max-w-7xl space-y-8 px-4 py-6">
-        <p className="text-right text-[11px] text-slate-600">
-          Página carregada em: {new Date().toLocaleString("pt-PT", { dateStyle: "short", timeStyle: "short" })}
-        </p>
+      <main className="mx-auto max-w-4xl space-y-6 px-4 py-6">
 
+        {/* Hero: resposta imediata a "como estou hoje?" */}
         <section>
-          <h2 className="mb-3 text-sm font-medium text-slate-400">Em Foco</h2>
-          <div className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="flex h-full flex-col">
-              <ReadinessCard data={readinessResult.data} />
-              <div className="mt-1 flex justify-end"><DataFreshnessDot isReal={readinessResult.isReal} error={readinessResult.error} /></div>
-            </div>
-            <div className="flex h-full flex-col">
+          <ReadinessHero
+            readiness={readinessResult.data}
+            load={trainingLoadResult.data}
+            recovery={recoveryResult.data}
+          />
+          <div className="mt-1 flex justify-end gap-3">
+            <DataFreshnessDot isReal={readinessResult.isReal} error={readinessResult.error} />
+            <DataFreshnessDot isReal={trainingLoadResult.isReal} error={trainingLoadResult.error} />
+            <DataFreshnessDot isReal={recoveryResult.isReal} error={recoveryResult.error} />
+          </div>
+        </section>
+
+        {/* Contexto secundário — carga e corrida */}
+        <section>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
               <TrainingLoadCard data={trainingLoadResult.data} />
-              <div className="mt-1 flex justify-end"><DataFreshnessDot isReal={trainingLoadResult.isReal} error={trainingLoadResult.error} /></div>
             </div>
-            <div className="flex h-full flex-col">
+            <div className="flex flex-col gap-1">
               <RunningSummaryCard data={runningResult.data} />
-              <div className="mt-1 flex justify-end"><DataFreshnessDot isReal={runningResult.isReal} error={runningResult.error} /></div>
-            </div>
-            <div className="flex h-full flex-col">
-              <RecoveryCard data={recoveryResult.data} />
-              <div className="mt-1 flex justify-end"><DataFreshnessDot isReal={recoveryResult.isReal} error={recoveryResult.error} /></div>
+              <div className="flex justify-end"><DataFreshnessDot isReal={runningResult.isReal} error={runningResult.error} /></div>
             </div>
           </div>
         </section>
 
+        {/* Comparação anual — resumo compacto */}
         <section>
-          <h2 className="mb-3 text-sm font-medium text-slate-400">Condição Atual</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <StatTile icon={<Heart size={14} />} label="FC Repouso" value={glanceResult.data.restingHr} unit="bpm" sublabel="Hoje" accent="#fb7185" />
-            <StatTile icon={<Zap size={14} />} label="Bateria" value={recoveryResult.data.bodyBatteryMax} unit="%" sublabel="Pico hoje" accent="#22d3ee" />
-            <StatTile icon={<Moon size={14} />} label="Sono" value={readinessResult.data.sleepScoreValue} unit="/100" sublabel="Última noite" accent="#a78bfa" />
-            <StatTile icon={<ActivityIcon size={14} />} label="VO2 Max" value={trainingLoadResult.data.vo2Max} sublabel="Superior" accent="#34d399" />
-            <StatTile icon={<Gauge size={14} />} label="TSB" value={trainingLoadResult.data.tsb !== null ? (trainingLoadResult.data.tsb > 0 ? `+${trainingLoadResult.data.tsb}` : trainingLoadResult.data.tsb) : null} sublabel="Hoje" accent="#fb923c" />
-            <StatTile icon={<Heart size={14} />} label="Stress" value={recoveryResult.data.avgStress} sublabel="Médio hoje" accent="#f87171" />
-          </div>
-        </section>
-
-        <section>
-          <h2 className="mb-3 text-sm font-medium text-slate-400">Comparação Homóloga — Ano Atual vs Ano Anterior</h2>
+          <h2 className="mb-3 text-sm font-medium text-slate-400">Ano Atual vs Ano Anterior</h2>
           <YoyKpiGrid kpis={yoyResult.data} />
           <CardSourceNote isReal={yoyResult.isReal} error={yoyResult.error} />
         </section>
 
+        {/* Fallback Strava quando Freddy está indisponível */}
         {stravaFallbackActivities.length > 0 && (
           <section>
             <h2 className="mb-3 text-sm font-medium text-slate-400">
               Atividades Recentes — Strava
-              <span className="ml-2 text-[10px] text-amber-500">Freddy indisponível — dados Garmin em falta</span>
+              <span className="ml-2 text-[10px] text-amber-500">Freddy indisponível</span>
             </h2>
             <div className="space-y-2">
               {stravaFallbackActivities.map((a) => {
                 const pace = a.distanceKm > 0 ? (a.durationSec / 60 / a.distanceKm) : 0;
                 const paceMin = Math.floor(pace);
                 const paceSec = Math.round((pace - paceMin) * 60);
-                const dur = `${Math.floor(a.durationSec / 60)}min`;
                 return (
                   <div key={a.id} className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm">
                     <div>
@@ -380,7 +316,7 @@ export default async function DashboardPage() {
                     </div>
                     <div className="flex gap-4 text-xs text-slate-400">
                       <span>{a.distanceKm.toFixed(1)} km</span>
-                      <span>{dur}</span>
+                      <span>{Math.floor(a.durationSec / 60)}min</span>
                       {pace > 0 && <span>{paceMin}:{String(paceSec).padStart(2, "0")}/km</span>}
                     </div>
                   </div>
@@ -389,12 +325,6 @@ export default async function DashboardPage() {
             </div>
           </section>
         )}
-
-        <section className="space-y-4">
-          <h2 className="text-sm font-medium text-slate-400">Estado de Forma</h2>
-          <FormBanner data={{ message: formMessage, tone: formTone }} />
-          <FormRadarCard data={radarData} />
-        </section>
       </main>
     </div>
   );
