@@ -75,7 +75,7 @@ async function buildContextSummary(): Promise<string> {
         }`
       : "Sem dados recentes de Training Readiness do Garmin.",
     weather
-      ? `[METEO HOJE, Braga]: máx ${weather.tempMaxC}°C / mín ${weather.tempMinC}°C, agora ${weather.tempNowC}°C com ${weather.humidityNowPct}% humidade, vento máx ${weather.windMaxKmh}km/h, prob. chuva ${weather.precipProbMaxPct}%. OBRIGATÓRIO: ajusta a recomendação ao tempo — com calor (>26°C) sugere horários frescos, hidratação e pace ~10-20s/km mais lento; acima de 32°C desaconselha treinos intensos ao meio do dia; com chuva forte ou vento >40km/h menciona percurso/equipamento.`
+      ? `[METEO HOJE, ${weather.locationName}]: máx ${weather.tempMaxC}°C / mín ${weather.tempMinC}°C, agora ${weather.tempNowC}°C com ${weather.humidityNowPct}% humidade, vento máx ${weather.windMaxKmh}km/h, prob. chuva ${weather.precipProbMaxPct}%. OBRIGATÓRIO: ajusta a recomendação ao tempo — com calor (>26°C) sugere horários frescos, hidratação e pace ~10-20s/km mais lento; acima de 32°C desaconselha treinos intensos ao meio do dia; com chuva forte ou vento >40km/h menciona percurso/equipamento.`
       : "Sem dados meteorológicos disponíveis.",
     latestLoad ? `ACWR (Garmin, complementar): status ${latestLoad.acwrStatus}, ratio ${latestLoad.acwrRatio}.` : "",
     (() => {

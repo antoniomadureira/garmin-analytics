@@ -14,14 +14,20 @@ export interface TodayWeather {
   humidityNowPct: number;
   windMaxKmh: number;
   precipProbMaxPct: number;
+  locationName: string;
 }
 
-const DEFAULT_LAT = 41.5454; // Braga
-const DEFAULT_LON = -8.4265;
+// [Certo] Default: Porto (utilizador confirmou região do Porto, não Braga).
+// Para precisão junto à costa (litoral vs interior difere 3-5°C em dias
+// quentes), definir WEATHER_LAT/WEATHER_LON com as coordenadas exactas.
+const DEFAULT_LAT = 41.1579; // Porto
+const DEFAULT_LON = -8.6291;
+const DEFAULT_LOCATION_NAME = "região do Porto";
 
 export async function getTodayWeather(): Promise<TodayWeather> {
   const lat = process.env.WEATHER_LAT ?? String(DEFAULT_LAT);
   const lon = process.env.WEATHER_LON ?? String(DEFAULT_LON);
+  const locationName = process.env.WEATHER_LOCATION_NAME ?? DEFAULT_LOCATION_NAME;
 
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
@@ -48,6 +54,7 @@ export async function getTodayWeather(): Promise<TodayWeather> {
     humidityNowPct: Math.round(data.current.relative_humidity_2m),
     windMaxKmh: Math.round(data.daily.wind_speed_10m_max[0]),
     precipProbMaxPct: Math.round(data.daily.precipitation_probability_max[0] ?? 0),
+    locationName,
   };
 }
 
