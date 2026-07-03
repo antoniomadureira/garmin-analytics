@@ -1819,7 +1819,8 @@ async function fetchInQuarterlyChunks(
     let text: string;
     try {
       text = await queryRawText({ metrics, start: c.from, end: c.to });
-    } catch {
+    } catch (err) {
+      if (String(err).includes("429") || String(err).includes("Rate limit")) throw err;
       await new Promise((r) => setTimeout(r, 500));
       text = await queryRawText({ metrics, start: c.from, end: c.to }); // 2ª falha propaga
     }
@@ -1834,14 +1835,7 @@ async function fetchInQuarterlyChunks(
     return text;
   }
 
-  const texts: string[] = [];
-  const BATCH_SIZE = 3;
-  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-    const batch = chunks.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.all(batch.map(fetchChunkCached));
-    texts.push(...batchResults);
-    if (i + BATCH_SIZE < chunks.length) await new Promise((r) => setTimeout(r, 200));
-  }
+  const texts = await Promise.all(chunks.map(fetchChunkCached));
   return texts.join("\n");
 }
 
