@@ -11,7 +11,8 @@ import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
 import { ReadinessHero } from "@/components/dashboard/readiness-hero";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 import { getShoesAndActivities } from "@/lib/strava-lab/client";
-import { getTodayWeather, classifyWeatherImpact } from "@/lib/weather/client";
+import { headers } from "next/headers";
+import { getTodayWeather, classifyWeatherImpact, type GeoHint } from "@/lib/weather/client";
 import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
 import { StatusSummary } from "@/components/ui/status-summary";
 
@@ -265,13 +266,22 @@ export default async function DashboardPage() {
     connectError = humanizeError(err);
   }
 
+  // [Certo] Geo-IP automático da Vercel — a meteo segue o utilizador
+  // (viagens, férias) sem pedir permissões de GPS ao browser.
+  const hdrs = await headers();
+  const geo: GeoHint = {
+    lat: hdrs.get("x-vercel-ip-latitude"),
+    lon: hdrs.get("x-vercel-ip-longitude"),
+    city: hdrs.get("x-vercel-ip-city"),
+  };
+
   const [readinessResult, trainingLoadResult, yoyResult, runningResult, recoveryResult, weatherImpact] = await Promise.all([
     loadReadiness(service, connectError),
     loadTrainingLoad(service, connectError),
     loadYoyKpis(service, connectError),
     loadRunningSummary(service, connectError),
     loadRecoveryInsights(service, connectError),
-    getTodayWeather().then(classifyWeatherImpact).catch(() => null),
+    getTodayWeather(geo).then(classifyWeatherImpact).catch(() => null),
   ]);
 
   // Fallback Strava: quando Freddy está completamente indisponível

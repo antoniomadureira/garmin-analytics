@@ -17,17 +17,27 @@ export interface TodayWeather {
   locationName: string;
 }
 
-// [Certo] Default: Porto (utilizador confirmou região do Porto, não Braga).
-// Para precisão junto à costa (litoral vs interior difere 3-5°C em dias
-// quentes), definir WEATHER_LAT/WEATHER_LON com as coordenadas exactas.
+// [Certo] Cadeia de localização: headers de geo-IP da Vercel (dinâmico,
+// funciona em viagem) → env vars (override manual) → Porto (último
+// recurso). [Provável] Geo-IP é preciso ao nível da cidade; VPNs e
+// alguns IPs móveis podem resolver para a cidade errada — o override
+// por env vars existe para esses casos.
 const DEFAULT_LAT = 41.1579; // Porto
 const DEFAULT_LON = -8.6291;
 const DEFAULT_LOCATION_NAME = "região do Porto";
 
-export async function getTodayWeather(): Promise<TodayWeather> {
-  const lat = process.env.WEATHER_LAT ?? String(DEFAULT_LAT);
-  const lon = process.env.WEATHER_LON ?? String(DEFAULT_LON);
-  const locationName = process.env.WEATHER_LOCATION_NAME ?? DEFAULT_LOCATION_NAME;
+export interface GeoHint {
+  lat?: string | null;
+  lon?: string | null;
+  city?: string | null;
+}
+
+export async function getTodayWeather(geo?: GeoHint): Promise<TodayWeather> {
+  const lat = geo?.lat ?? process.env.WEATHER_LAT ?? String(DEFAULT_LAT);
+  const lon = geo?.lon ?? process.env.WEATHER_LON ?? String(DEFAULT_LON);
+  const locationName = geo?.city
+    ? decodeURIComponent(geo.city)
+    : process.env.WEATHER_LOCATION_NAME ?? DEFAULT_LOCATION_NAME;
 
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +

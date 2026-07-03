@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 import { getAthleteZones } from "@/lib/strava-lab/client";
-import { getTodayWeather } from "@/lib/weather/client";
+import { getTodayWeather, type GeoHint } from "@/lib/weather/client";
 
 /**
  * [Certo] Endpoint e modelo confirmados em console.groq.com/docs (2026-06-25):
@@ -17,7 +17,7 @@ interface ChatMessage {
   content: string;
 }
 
-async function buildContextSummary(): Promise<string> {
+async function buildContextSummary(geo?: GeoHint): Promise<string> {
   let service;
   try {
     service = await getFreddyDataService();
@@ -46,7 +46,7 @@ async function buildContextSummary(): Promise<string> {
     // é a única fonte que inclui treinos do próprio dia (summarizedActivity_*
     // tem atraso confirmado de ~30 dias). Pedido mínimo: 1 dia.
     service.getRecentActivities(1).catch(() => []),
-    getTodayWeather().catch(() => null),
+    getTodayWeather(geo).catch(() => null),
   ]);
   const latestReadiness = readinessEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), readinessEntries[0]);
   const latestLoad = loadEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), loadEntries[0]);
@@ -150,7 +150,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sem mensagens." }, { status: 400 });
   }
 
-  const context = await buildContextSummary();
+  const geo: GeoHint = {
+    lat: req.headers.get("x-vercel-ip-latitude"),
+    lon: req.headers.get("x-vercel-ip-longitude"),
+    city: req.headers.get("x-vercel-ip-city"),
+  };
+  const context = await buildContextSummary(geo);
 
   const groqRes = await fetch(GROQ_URL, {
     method: "POST",

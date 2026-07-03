@@ -121,6 +121,7 @@ export function ReadinessHero({ readiness, load, recovery, weather }: HeroProps)
         {/* Verdict + signals */}
         <div className="flex-1 min-w-0">
           <div className="mb-3">
+            <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Prontidão Diária</p>
             <h3 className="text-lg font-bold text-slate-100">{verdict.title}</h3>
             <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{verdict.subtitle}</p>
           </div>
