@@ -136,6 +136,23 @@ export async function setGearCost(gearId: string, priceEur: number): Promise<voi
   if (!res.ok) throw new Error(`Erro ao guardar custo: ${res.status} ${await res.text()}`);
 }
 
+export interface StravaLabAthleteTotals {
+  allTimeKm: number;
+  allTimeCount: number;
+  allTimeElevationM: number;
+  ytdKm: number;
+  ytdCount: number;
+}
+
+/**
+ * [Certo] Totais agregados calculados pelo próprio Strava — sem
+ * paginação, sem limite de 1000 atividades. Fonte autoritativa para o
+ * total histórico de km.
+ */
+export async function getAthleteRunTotals(): Promise<StravaLabAthleteTotals> {
+  return fetchFromStravaLab<StravaLabAthleteTotals>("/api/data?type=athlete-stats");
+}
+
 export async function getPersonalRecords(): Promise<StravaLabRecord[]> {
   const result = await fetchFromStravaLab<{ records?: StravaLabRecord[] }>("/api/data?type=records");
   return Array.isArray(result.records) ? result.records : [];

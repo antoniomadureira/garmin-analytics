@@ -16,7 +16,7 @@ import {
 import { PersonalRecordsPanel } from "@/components/dashboard/personal-records-panel";
 import { ChartSkeleton } from "@/components/dashboard/running-skeleton";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
-import { getPersonalRecords, getShoesAndActivities, type StravaLabRecord, type StravaLabActivity } from "@/lib/strava-lab/client";
+import { getPersonalRecords, getShoesAndActivities, getAthleteRunTotals, type StravaLabRecord, type StravaLabActivity } from "@/lib/strava-lab/client";
 import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
 
 function roundTo(v: number, d: number) {
@@ -188,6 +188,18 @@ async function StatsSection() {
       }
     } catch { /* sem Strava */ }
   }
+
+  // [Certo] Total Histórico SEMPRE do endpoint agregado do Strava quando
+  // disponível — é o total real desde que o utilizador começou a correr
+  // (confirmado pelo próprio), calculado pelo Strava sem paginação. O
+  // Garmin/Freddy só tem dados desde que usa o relógio, e a paginação
+  // strava-lab só cobre 1000 atividades — ambas as fontes ficam aquém.
+  try {
+    const totals = await getAthleteRunTotals();
+    if (totals.allTimeKm > 0) {
+      stats = { ...stats, totalAllTimeKm: totals.allTimeKm };
+    }
+  } catch { /* mantém o total da fonte anterior */ }
   return (
     <>
       <RunningStatsTiles data={stats} />

@@ -74,6 +74,8 @@
  * =============================================================================
  */
 
+import { kv } from "@/lib/redis";
+
 // -----------------------------------------------------------------------------
 // 1. CONST OBJECTS DE METRIC NAMES (agrupados por domínio funcional)
 // -----------------------------------------------------------------------------
@@ -1774,13 +1776,55 @@ async function fetchInQuarterlyChunks(
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 3, 1);
   }
 
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const metricsKey = metrics.join(",");
+
+  /**
+   * [Certo] Cache Upstash por trimestre — correcção da inconsistência
+   * entre refreshes confirmada: sem cache, cada refresh disparava ~50
+   * pedidos ao Freddy e cada um era uma lotaria de rate limit; um chunk
+   * falhado desaparecia silenciosamente (catch => ""), fazendo o gráfico
+   * mostrar só os trimestres que passaram (ex: só maio/junho).
+   * - Trimestre FECHADO (to < hoje): dados imutáveis → TTL 7 dias.
+   * - Trimestre CORRENTE: TTL 15 min (dados novos podem chegar).
+   */
+  async function fetchChunkCached(c: { from: string; to: string }): Promise<string> {
+    const cacheKey = `freddy:chunk:${metricsKey}:${c.from}:${c.to}`;
+    try {
+      const cached = await kv.get<string>(cacheKey);
+      if (cached !== null && cached !== undefined) return cached;
+    } catch {
+      /* cache indisponível não impede o fetch directo */
+    }
+
+    // [Certo] Fail-fast com 1 retry — antes, um chunk falhado devolvia ""
+    // silenciosamente e os dados apareciam parciais como se fossem
+    // completos. Agora: retry após 500ms; se falhar de novo, LANÇA — o
+    // loader cai no fallback declarado (bola vermelha honesta) em vez de
+    // mostrar dados errados com bola verde.
+    let text: string;
+    try {
+      text = await queryRawText({ metrics, start: c.from, end: c.to });
+    } catch {
+      await new Promise((r) => setTimeout(r, 500));
+      text = await queryRawText({ metrics, start: c.from, end: c.to }); // 2ª falha propaga
+    }
+
+    const isClosedQuarter = c.to < todayStr;
+    const ttlSeconds = isClosedQuarter ? 7 * 24 * 3600 : 15 * 60;
+    try {
+      await kv.set(cacheKey, text, { ex: ttlSeconds });
+    } catch {
+      /* falha de escrita no cache não é crítica */
+    }
+    return text;
+  }
+
   const texts: string[] = [];
   const BATCH_SIZE = 3;
   for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
     const batch = chunks.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.all(
-      batch.map((c) => queryRawText({ metrics, start: c.from, end: c.to }).catch(() => ""))
-    );
+    const batchResults = await Promise.all(batch.map(fetchChunkCached));
     texts.push(...batchResults);
     if (i + BATCH_SIZE < chunks.length) await new Promise((r) => setTimeout(r, 200));
   }
