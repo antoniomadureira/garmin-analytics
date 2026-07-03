@@ -11,7 +11,9 @@ import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
 import { ReadinessHero } from "@/components/dashboard/readiness-hero";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 import { getShoesAndActivities } from "@/lib/strava-lab/client";
+import { getTodayWeather, classifyWeatherImpact } from "@/lib/weather/client";
 import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
+import { StatusSummary } from "@/components/ui/status-summary";
 
 // =============================================================================
 // [Provável] Tentamos dados reais para Readiness, TrainingLoad e VO2 Max
@@ -263,12 +265,13 @@ export default async function DashboardPage() {
     connectError = humanizeError(err);
   }
 
-  const [readinessResult, trainingLoadResult, yoyResult, runningResult, recoveryResult] = await Promise.all([
+  const [readinessResult, trainingLoadResult, yoyResult, runningResult, recoveryResult, weatherImpact] = await Promise.all([
     loadReadiness(service, connectError),
     loadTrainingLoad(service, connectError),
     loadYoyKpis(service, connectError),
     loadRunningSummary(service, connectError),
     loadRecoveryInsights(service, connectError),
+    getTodayWeather().then(classifyWeatherImpact).catch(() => null),
   ]);
 
   // Fallback Strava: quando Freddy está completamente indisponível
@@ -293,12 +296,15 @@ export default async function DashboardPage() {
             readiness={readinessResult.data}
             load={trainingLoadResult.data}
             recovery={recoveryResult.data}
+            weather={weatherImpact}
           />
-          <div className="mt-1 flex justify-end gap-3">
-            <DataFreshnessDot isReal={readinessResult.isReal} error={readinessResult.error} />
-            <DataFreshnessDot isReal={trainingLoadResult.isReal} error={trainingLoadResult.error} />
-            <DataFreshnessDot isReal={recoveryResult.isReal} error={recoveryResult.error} />
-          </div>
+          <StatusSummary
+            sources={[
+              { label: "Readiness", isReal: readinessResult.isReal, error: readinessResult.error },
+              { label: "Carga de treino", isReal: trainingLoadResult.isReal, error: trainingLoadResult.error },
+              { label: "Recuperação", isReal: recoveryResult.isReal, error: recoveryResult.error },
+            ]}
+          />
         </section>
 
         {/* Contexto secundário — carga e corrida */}

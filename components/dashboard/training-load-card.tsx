@@ -120,7 +120,7 @@ export function TrainingLoadCard({ data }: { data: TrainingLoadCardData }) {
 
   return (
     <Card className="flex-1">
-      <CardTitle>Carga de Treino</CardTitle>
+      <CardTitle>Estado do Treino</CardTitle>
 
       <div className="space-y-4">
         {/* 1. TSB Spectrum — a resposta principal */}

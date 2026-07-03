@@ -8,6 +8,7 @@ interface HeroProps {
   readiness: ReadinessCardData;
   load: TrainingLoadCardData;
   recovery: RecoveryCardData;
+  weather?: { level: "ok" | "caution" | "warning"; message: string | null } | null;
 }
 
 function ScoreRing({ score, tone }: { score: number; tone: "green" | "yellow" | "red" }) {
@@ -44,17 +45,23 @@ function Signal({ label, value, delta, deltaUnit, invertDelta = false }: {
   delta?: number | null; deltaUnit?: string; invertDelta?: boolean;
 }) {
   const hasDelta = delta !== null && delta !== undefined;
+  // [Certo] Delta ~0 significa "exactamente na tua média de 30 dias" —
+  // mostrar "0bpm" esbatido era confuso (parecia dado em falta). Agora:
+  // |delta| < 1 mostra "na média" discreto; caso contrário o delta real.
+  const isAtBaseline = hasDelta && Math.abs(delta ?? 0) < 1;
   const good = invertDelta ? (delta ?? 0) < 0 : (delta ?? 0) > 0;
-  const neutral = hasDelta && Math.abs(delta ?? 0) < 2;
-  const deltaColor = neutral ? "text-slate-500" : good ? "text-emerald-400" : "text-amber-400";
+  const deltaColor = good ? "text-emerald-400" : "text-amber-400";
   return (
     <div className="flex items-center justify-between py-1.5 border-b border-slate-800/60 last:border-0">
       <span className="text-xs text-slate-400">{label}</span>
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium text-slate-200">{value ?? "—"}</span>
-        {hasDelta && (
+        {hasDelta && isAtBaseline && (
+          <span className="text-[10px] text-slate-600">na média</span>
+        )}
+        {hasDelta && !isAtBaseline && (
           <span className={`text-[11px] ${deltaColor}`}>
-            {(delta ?? 0) > 0 ? "+" : ""}{delta}{deltaUnit}
+            {(delta ?? 0) > 0 ? "+" : ""}{delta}{deltaUnit} vs média
           </span>
         )}
       </div>
@@ -62,7 +69,7 @@ function Signal({ label, value, delta, deltaUnit, invertDelta = false }: {
   );
 }
 
-export function ReadinessHero({ readiness, load, recovery }: HeroProps) {
+export function ReadinessHero({ readiness, load, recovery, weather }: HeroProps) {
   const score = readiness.compositeScore ?? readiness.garminScore ?? 50;
   const tone: "green" | "yellow" | "red" = score >= 70 ? "green" : score >= 50 ? "yellow" : "red";
 
@@ -142,6 +149,17 @@ export function ReadinessHero({ readiness, load, recovery }: HeroProps) {
               value={load.tsb !== null ? `${load.tsb > 0 ? "+" : ""}${load.tsb}` : null}
             />
           </div>
+
+          {weather?.message && (
+            <div className={`mt-2 flex items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] leading-relaxed ${
+              weather.level === "warning"
+                ? "bg-red-950/40 text-red-300"
+                : "bg-amber-950/30 text-amber-300"
+            }`}>
+              <span className="mt-px">{weather.level === "warning" ? "🥵" : "🌤"}</span>
+              <span>{weather.message}</span>
+            </div>
+          )}
 
           {readiness.garminStaleDaysAgo && readiness.garminStaleDaysAgo > 2 && (
             <p className="mt-2 text-[10px] text-slate-600">

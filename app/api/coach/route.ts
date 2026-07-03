@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 import { getAthleteZones } from "@/lib/strava-lab/client";
+import { getTodayWeather } from "@/lib/weather/client";
 
 /**
  * [Certo] Endpoint e modelo confirmados em console.groq.com/docs (2026-06-25):
@@ -36,7 +37,7 @@ async function buildContextSummary(): Promise<string> {
     service.getWellnessWeekly(8).catch(() => []),
   ]);
   await new Promise((r) => setTimeout(r, 250));
-  const [loadEntries, running, composed, zones, todayActivities] = await Promise.all([
+  const [loadEntries, running, composed, zones, todayActivities, weather] = await Promise.all([
     service.getTrainingLoadSummary(7).catch(() => []),
     service.getWeeklyRunningSummary(7).catch(() => null),
     service.getComposedReadinessFromWellness(wellness).catch(() => null),
@@ -45,6 +46,7 @@ async function buildContextSummary(): Promise<string> {
     // é a única fonte que inclui treinos do próprio dia (summarizedActivity_*
     // tem atraso confirmado de ~30 dias). Pedido mínimo: 1 dia.
     service.getRecentActivities(1).catch(() => []),
+    getTodayWeather().catch(() => null),
   ]);
   const latestReadiness = readinessEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), readinessEntries[0]);
   const latestLoad = loadEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), loadEntries[0]);
@@ -72,6 +74,9 @@ async function buildContextSummary(): Promise<string> {
             : ""
         }`
       : "Sem dados recentes de Training Readiness do Garmin.",
+    weather
+      ? `[METEO HOJE, Braga]: máx ${weather.tempMaxC}°C / mín ${weather.tempMinC}°C, agora ${weather.tempNowC}°C com ${weather.humidityNowPct}% humidade, vento máx ${weather.windMaxKmh}km/h, prob. chuva ${weather.precipProbMaxPct}%. OBRIGATÓRIO: ajusta a recomendação ao tempo — com calor (>26°C) sugere horários frescos, hidratação e pace ~10-20s/km mais lento; acima de 32°C desaconselha treinos intensos ao meio do dia; com chuva forte ou vento >40km/h menciona percurso/equipamento.`
+      : "Sem dados meteorológicos disponíveis.",
     latestLoad ? `ACWR (Garmin, complementar): status ${latestLoad.acwrStatus}, ratio ${latestLoad.acwrRatio}.` : "",
     (() => {
       const todayStr = new Date().toISOString().slice(0, 10);
