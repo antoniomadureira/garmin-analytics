@@ -729,6 +729,7 @@ export class FreddyDataService {
   async getComposedReadiness(): Promise<{
     compositeScore: number | null;
     recommendation: string;
+    level: "green" | "yellow" | "red" | "unknown";
     signals: { label: string; status: "bom" | "ok" | "atencao"; detail: string; subScore: number | null }[];
   }> {
     const wellness = await this.getWellnessWeekly(8);
@@ -745,6 +746,7 @@ export class FreddyDataService {
   async getComposedReadinessFromWellness(wellness: WellnessDay[]): Promise<{
     compositeScore: number | null;
     recommendation: string;
+    level: "green" | "yellow" | "red" | "unknown";
     signals: { label: string; status: "bom" | "ok" | "atencao"; detail: string; subScore: number | null }[];
   }> {
     const battery = await this.getBodyBatteryWeekly(3).catch(() => []);
@@ -799,18 +801,30 @@ export class FreddyDataService {
     const validScores = signals.map((s) => s.subScore).filter((v): v is number => v !== null);
     const compositeScore = validScores.length ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length) : null;
 
+    // [Certo] FONTE ÚNICA de classificação — o level e a recommendation
+    // são calculados AQUI e só aqui. O Hero (Prontidão Diária) e o
+    // Consultor consomem exactamente estes valores. Nunca reclassificar
+    // o compositeScore noutro sítio com limiares próprios — foi essa
+    // duplicação (Hero: >=70 verde vs aqui: >=75) que fez o mesmo 72/100
+    // aparecer como "Pronto para treinar" num painel e "Sinais mistos"
+    // no outro.
     let recommendation: string;
+    let level: "green" | "yellow" | "red" | "unknown";
     if (compositeScore === null) {
       recommendation = "Sem sinais suficientes para uma recomendação — verificar ligação ao Intervals.icu/Garmin.";
+      level = "unknown";
     } else if (compositeScore >= 75) {
       recommendation = "Sinais maioritariamente positivos — janela razoável para treino de qualidade (séries, tempo run).";
+      level = "green";
     } else if (compositeScore >= 55) {
       recommendation = "Sinais mistos — corrida moderada ou rolante é a opção mais segura hoje, evitar séries duras.";
+      level = "yellow";
     } else {
       recommendation = "Vários sinais de fadiga/recuperação incompleta — corrida fácil ou descanso recomendado.";
+      level = "red";
     }
 
-    return { compositeScore, recommendation, signals };
+    return { compositeScore, recommendation, level, signals };
   }
 
   async getWellnessWeekly(days = 7): Promise<WellnessDay[]> {

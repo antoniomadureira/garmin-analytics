@@ -30,6 +30,7 @@ async function loadReadiness(service: Awaited<ReturnType<typeof getFreddyDataSer
   const mock: ReadinessCardData = {
     compositeScore: 78,
     recommendation: "Sinais maioritariamente positivos — janela razoável para treino de qualidade (séries, tempo run).",
+    level: "green",
     signals: [
       { label: "Carga de Treino (TSB)", status: "bom", detail: "+11.7" },
       { label: "HRV", status: "bom", detail: "39ms (+2% vs média)" },
@@ -64,6 +65,7 @@ async function loadReadiness(service: Awaited<ReturnType<typeof getFreddyDataSer
       data: {
         compositeScore: composed.compositeScore,
         recommendation: composed.recommendation,
+        level: composed.level,
         signals: composed.signals.map((s) => ({ label: s.label, status: s.status, detail: s.detail })),
         garminScore: latest?.score ?? null,
         garminLevel: latest?.level ?? "—",

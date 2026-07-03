@@ -10,6 +10,8 @@ export interface ReadinessSignal {
 export interface ReadinessCardData {
   compositeScore: number | null;
   recommendation: string;
+  /** [Certo] Classificação vinda do serviço composto — fonte única, nunca reclassificar localmente. */
+  level: "green" | "yellow" | "red" | "unknown";
   signals: ReadinessSignal[];
   garminScore: number | null;
   garminLevel: string;

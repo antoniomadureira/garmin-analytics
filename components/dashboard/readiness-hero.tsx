@@ -71,23 +71,23 @@ function Signal({ label, value, delta, deltaUnit, invertDelta = false }: {
 
 export function ReadinessHero({ readiness, load, recovery, weather }: HeroProps) {
   const score = readiness.compositeScore ?? readiness.garminScore ?? 50;
-  const tone: "green" | "yellow" | "red" = score >= 70 ? "green" : score >= 50 ? "yellow" : "red";
+  // [Certo] O tone vem do SERVIÇO (fonte única), não de limiares locais.
+  // Foi a reclassificação local (>=70 verde vs >=75 no serviço) que fez
+  // o mesmo 72/100 aparecer "Pronto para treinar" aqui e "Sinais mistos"
+  // no Consultor. unknown cai em yellow (comportamento conservador).
+  const tone: "green" | "yellow" | "red" =
+    readiness.level === "green" ? "green" : readiness.level === "red" ? "red" : "yellow";
 
-  const verdicts: Record<string, { title: string; subtitle: string }> = {
-    green: {
-      title: "Pronto para treinar",
-      subtitle: "Janela favorável — séries, limiar ou volume são adequados hoje.",
-    },
-    yellow: {
-      title: "Treino moderado",
-      subtitle: "Sinais mistos — prefira ritmo controlado e evite esforço máximo.",
-    },
-    red: {
-      title: "Recupera hoje",
-      subtitle: "Sinais de fadiga acumulada — descanso ativo ou sessão muito leve.",
-    },
+  const titles: Record<"green" | "yellow" | "red", string> = {
+    green: "Pronto para treinar",
+    yellow: "Treino moderado",
+    red: "Recupera hoje",
   };
-  const verdict = verdicts[tone];
+
+  // [Certo] O subtítulo é a recommendation do serviço — exactamente a
+  // mesma string que o Consultor de Treino recebe no contexto. Um só
+  // texto, dois sítios, zero divergência possível.
+  const verdict = { title: titles[tone], subtitle: readiness.recommendation };
 
   // Deltas HRV e FC repouso vs baseline
   const hrvDelta = recovery.hrv && recovery.hrvBaseline
