@@ -21,7 +21,7 @@ import { createHash } from "crypto";
  * precisar de FLUSHDB.
  */
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2; // era 1 — invalida sentinels gravados pela regressão days→range
 const TTL_IMMUTABLE_S = 30 * 24 * 3600;
 const TTL_YESTERDAY_S = 6 * 3600;
 const TTL_TODAY_S = 15 * 60;
