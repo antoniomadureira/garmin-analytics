@@ -16,7 +16,8 @@ import {
 import { PersonalRecordsPanel } from "@/components/dashboard/personal-records-panel";
 import { ChartSkeleton } from "@/components/dashboard/running-skeleton";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
-import { getPersonalRecords, getShoesAndActivities, getAthleteRunTotals, type StravaLabRecord, type StravaLabActivity } from "@/lib/strava-lab/client";
+import { getAthleteRunTotals, type StravaLabRecord, type StravaLabActivity } from "@/lib/strava-lab/client";
+import { getCachedPersonalRecords, getShoesAndActivitiesCached } from "@/lib/strava-lab/records-cache";
 import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
 
 function roundTo(v: number, d: number) {
@@ -149,7 +150,7 @@ async function MonthlySection() {
   }
   // Fallback Strava
   try {
-    const { activities } = await getShoesAndActivities();
+    const { activities } = await getShoesAndActivitiesCached();
     const stravaData = stravaActivitiesToDailyTrend(activities);
     if (stravaData.length > 0) return (
       <><MonthlyTrendChart data={stravaData} /><div className="flex justify-end"><DataFreshnessDot isReal={false} error={`${connectError ?? ""} · A mostrar dados Strava (últimas 30 corridas).`} /></div></>
@@ -181,7 +182,7 @@ async function StatsSection() {
   // Fallback Strava para estatísticas
   if (!isReal) {
     try {
-      const { activities } = await getShoesAndActivities();
+      const { activities } = await getShoesAndActivitiesCached();
       if (activities.length > 0) {
         stats = stravaActivitiesToStats(activities);
         error = `${error ?? ""} · Estatísticas calculadas a partir do Strava (últimas 30 corridas, sem histórico completo).`.trim();
@@ -216,7 +217,7 @@ async function StatsSection() {
 
 async function RecordsSection() {
   try {
-    const records = await getPersonalRecords();
+    const records = await getCachedPersonalRecords();
     if (records.length === 0) throw new Error("Sem recordes calculáveis a partir das atividades Strava.");
     return (
       <>
