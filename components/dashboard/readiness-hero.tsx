@@ -4,6 +4,14 @@ import type { ReadinessCardData } from "@/components/dashboard/readiness-card";
 import type { TrainingLoadCardData } from "@/components/dashboard/training-load-card";
 import type { RecoveryCardData } from "@/components/dashboard/recovery-card";
 import { computeHrvDeltaPct } from "@/lib/utils/hrv";
+import {
+  type SignalSeverity,
+  SEVERITY_TEXT,
+  hrvSeverity,
+  rhrSeverity,
+  bodyBatterySeverity,
+  tsbSeverity,
+} from "@/lib/ui/signal-severity";
 
 interface HeroProps {
   readiness: ReadinessCardData;
@@ -47,29 +55,42 @@ function ScoreRing({ score, tone }: { score: number; tone: "green" | "yellow" | 
   );
 }
 
-function Signal({ label, value, delta, deltaUnit, invertDelta = false }: {
-  label: string; value: string | null;
-  delta?: number | null; deltaUnit?: string; invertDelta?: boolean;
+function Signal({
+  label, value, valueSeverity, delta, deltaUnit, invertDelta = false, subtext,
+}: {
+  label: string;
+  value: string | null;
+  valueSeverity?: SignalSeverity;
+  delta?: number | null;
+  deltaUnit?: string;
+  invertDelta?: boolean;
+  subtext?: string;
 }) {
   const hasDelta = delta !== null && delta !== undefined;
   // [Certo] Delta ~0 significa "exactamente na tua média de 30 dias" —
-  // mostrar "0bpm" esbatido era confuso (parecia dado em falta). Agora:
   // |delta| < 1 mostra "na média" discreto; caso contrário o delta real.
   const isAtBaseline = hasDelta && Math.abs(delta ?? 0) < 1;
   const good = invertDelta ? (delta ?? 0) < 0 : (delta ?? 0) > 0;
   const deltaColor = good ? "text-emerald-400" : "text-amber-400";
+  const valueColor = valueSeverity ? SEVERITY_TEXT[valueSeverity] : "text-slate-200";
+
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-slate-800/60 last:border-0">
-      <span className="text-xs text-slate-400">{label}</span>
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-slate-200">{value ?? "—"}</span>
-        {hasDelta && isAtBaseline && (
-          <span className="text-[10px] text-slate-600">na média</span>
-        )}
-        {hasDelta && !isAtBaseline && (
-          <span className={`text-[11px] ${deltaColor}`}>
-            {(delta ?? 0) > 0 ? "+" : ""}{delta}{deltaUnit} vs média
-          </span>
+    <div className="flex items-start justify-between py-1.5 border-b border-slate-800/60 last:border-0">
+      <span className="text-xs text-slate-400 pt-px">{label}</span>
+      <div className="flex flex-col items-end gap-0.5">
+        <div className="flex items-center gap-2">
+          <span className={`text-sm font-medium ${valueColor}`}>{value ?? "—"}</span>
+          {hasDelta && isAtBaseline && (
+            <span className="text-[10px] text-slate-600">na média</span>
+          )}
+          {hasDelta && !isAtBaseline && (
+            <span className={`text-[11px] ${deltaColor}`}>
+              {(delta ?? 0) > 0 ? "+" : ""}{delta}{deltaUnit} vs média
+            </span>
+          )}
+        </div>
+        {subtext && (
+          <span className="text-[11px] text-slate-500">{subtext}</span>
         )}
       </div>
     </div>
@@ -79,9 +100,6 @@ function Signal({ label, value, delta, deltaUnit, invertDelta = false }: {
 export function ReadinessHero({ readiness, load, recovery, weather }: HeroProps) {
   const score = readiness.compositeScore ?? readiness.garminScore ?? 50;
   // [Certo] O tone vem do SERVIÇO (fonte única), não de limiares locais.
-  // Foi a reclassificação local (>=70 verde vs >=75 no serviço) que fez
-  // o mesmo 72/100 aparecer "Pronto para treinar" aqui e "Sinais mistos"
-  // no Consultor. unknown cai em yellow (comportamento conservador).
   const tone: "green" | "yellow" | "red" =
     readiness.level === "green" ? "green" : readiness.level === "red" ? "red" : "yellow";
 
@@ -91,33 +109,50 @@ export function ReadinessHero({ readiness, load, recovery, weather }: HeroProps)
     red: "Recupera hoje",
   };
 
-  // [Certo] O subtítulo é a recommendation do serviço — exactamente a
-  // mesma string que o Consultor de Treino recebe no contexto. Um só
-  // texto, dois sítios, zero divergência possível.
+  // [Certo] O subtítulo é a recommendation do serviço — fonte única.
   const verdict = { title: titles[tone], subtitle: readiness.recommendation };
 
-  // Deltas HRV (%) e FC repouso (ms absoluto) vs baseline
   const hrvDelta = recovery.hrv && recovery.hrvBaseline
     ? computeHrvDeltaPct(recovery.hrv, recovery.hrvBaseline) : null;
   const rhrDelta = recovery.restingHr && recovery.restingHrBaseline
     ? Math.round(recovery.restingHr - recovery.restingHrBaseline) : null;
-
-  const tsbColor = load.tsb === null ? "text-slate-400"
-    : load.tsb > 5 ? "text-emerald-400"
-    : load.tsb >= -10 ? "text-amber-400"
-    : "text-red-400";
-
   const batteryPeak = recovery.bodyBatteryMax;
-  const batteryColor = batteryPeak === null ? "text-slate-400"
-    : batteryPeak >= 70 ? "text-emerald-400"
-    : batteryPeak >= 45 ? "text-amber-400"
-    : "text-red-400";
+
+  // Timestamp derivado da última entrada do histórico de wellness (formato MM-DD)
+  const lastDataLabel = (() => {
+    if (!load.history.length) return null;
+    const raw = load.history[load.history.length - 1].date; // "MM-DD"
+    const [mm, dd] = raw.split("-").map(Number);
+    const today = new Date();
+    const dataDate = new Date(today.getFullYear(), mm - 1, dd);
+    if (dataDate > today) dataDate.setFullYear(today.getFullYear() - 1);
+    const diffDays = Math.round((today.getTime() - dataDate.getTime()) / 86400000);
+    if (diffDays === 0) return "hoje";
+    if (diffDays === 1) return "ontem";
+    return `${String(dd).padStart(2, "0")}/${String(mm).padStart(2, "0")}`;
+  })();
 
   const glow = tone === "green" ? "shadow-emerald-950/40" : tone === "yellow" ? "shadow-amber-950/40" : "shadow-red-950/40";
   const borderColor = tone === "green" ? "border-emerald-900/50" : tone === "yellow" ? "border-amber-900/50" : "border-red-900/50";
 
+  // Faixa ambiental: fundo segue o pior nível (ok = sem fundo)
+  const envBg =
+    weather?.level === "warning" ? "bg-red-950/40 text-red-300" :
+    weather?.level === "caution" ? "bg-amber-950/30 text-amber-300" :
+    "text-slate-500";
+  const envEmoji = weather?.level === "warning" ? "🥵" : weather?.level === "caution" ? "🌤" : null;
+  const hasEnvData = weather && (weather.tempNowC !== undefined || weather.aqi != null || weather.message);
+
   return (
     <div className={`rounded-2xl border ${borderColor} bg-slate-900/60 p-5 shadow-lg ${glow}`}>
+      {/* Topo: label + timestamp */}
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Prontidão Diária</p>
+        {lastDataLabel && (
+          <span className="text-[10px] text-slate-600">dados de {lastDataLabel}</span>
+        )}
+      </div>
+
       <div className="flex items-start gap-6">
         {/* Score ring */}
         <div className="shrink-0">
@@ -128,7 +163,6 @@ export function ReadinessHero({ readiness, load, recovery, weather }: HeroProps)
         {/* Verdict + signals */}
         <div className="flex-1 min-w-0">
           <div className="mb-3">
-            <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Prontidão Diária</p>
             <h3 className="text-lg font-bold text-slate-100">{verdict.title}</h3>
             <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{verdict.subtitle}</p>
           </div>
@@ -137,6 +171,7 @@ export function ReadinessHero({ readiness, load, recovery, weather }: HeroProps)
             <Signal
               label="HRV"
               value={recovery.hrv ? `${recovery.hrv}ms` : null}
+              valueSeverity={hrvDelta !== null ? hrvSeverity(hrvDelta) : undefined}
               delta={hrvDelta}
               deltaUnit="%"
               invertDelta={false}
@@ -144,6 +179,7 @@ export function ReadinessHero({ readiness, load, recovery, weather }: HeroProps)
             <Signal
               label="FC Repouso"
               value={recovery.restingHr ? `${recovery.restingHr}bpm` : null}
+              valueSeverity={rhrDelta !== null ? rhrSeverity(rhrDelta) : undefined}
               delta={rhrDelta}
               deltaUnit="bpm"
               invertDelta={true}
@@ -151,38 +187,35 @@ export function ReadinessHero({ readiness, load, recovery, weather }: HeroProps)
             <Signal
               label="Bateria ao acordar"
               value={batteryPeak !== null ? `${batteryPeak}%` : null}
+              valueSeverity={batteryPeak !== null ? bodyBatterySeverity(batteryPeak) : undefined}
             />
             <Signal
-              label={`TSB  (CTL ${load.ctl?.toFixed(0) ?? "—"} / ATL ${load.atl?.toFixed(0) ?? "—"})`}
+              label="TSB"
               value={load.tsb !== null ? `${load.tsb > 0 ? "+" : ""}${load.tsb}` : null}
+              valueSeverity={load.tsb !== null ? tsbSeverity(load.tsb) : undefined}
+              subtext={
+                load.ctl !== null && load.atl !== null
+                  ? `CTL ${load.ctl.toFixed(0)} / ATL ${load.atl.toFixed(0)}`
+                  : undefined
+              }
             />
           </div>
 
-          {weather && (weather.tempNowC !== undefined || weather.aqi != null) && (
-            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-500">
-              {weather.tempNowC !== undefined && (
-                <span>agora {weather.tempNowC}° · máx {weather.tempMaxC}°</span>
-              )}
-              {weather.aqi != null && (
-                <>
-                  <span>·</span>
-                  <span className={
-                    weather.aqi > 60 ? "text-red-400" :
-                    weather.aqi >= 40 ? "text-amber-400" : ""
-                  }>AQI {weather.aqi}</span>
-                </>
-              )}
-            </div>
-          )}
-
-          {weather?.message && (
-            <div className={`mt-1 flex items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] leading-relaxed ${
-              weather.level === "warning"
-                ? "bg-red-950/40 text-red-300"
-                : "bg-amber-950/30 text-amber-300"
-            }`}>
-              <span className="mt-px">{weather.level === "warning" ? "🥵" : "🌤"}</span>
-              <span>{weather.message}</span>
+          {/* Faixa ambiental unificada: meteo + AQI + alerta num só strip */}
+          {hasEnvData && (
+            <div className={`mt-2 rounded-lg px-2.5 py-1.5 text-[11px] leading-relaxed ${envBg}`}>
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                {envEmoji && <span>{envEmoji}</span>}
+                {weather!.tempNowC !== undefined && (
+                  <span>agora {weather!.tempNowC}° · máx {weather!.tempMaxC}°</span>
+                )}
+                {weather!.aqi != null && (
+                  <span>· AQI {weather!.aqi}</span>
+                )}
+                {weather!.message && (
+                  <span>· {weather!.message}</span>
+                )}
+              </div>
             </div>
           )}
 
