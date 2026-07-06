@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 import { getAthleteZones } from "@/lib/strava-lab/client";
-import { getTodayWeather, type GeoHint } from "@/lib/weather/client";
+import { getTodayWeather, getAirQuality, type GeoHint } from "@/lib/weather/client";
+import { getIcuPaceZones } from "@/lib/intervals/client";
 
 /**
  * [Certo] Endpoint e modelo confirmados em console.groq.com/docs (2026-06-25):
@@ -15,6 +16,20 @@ const GROQ_MODEL = "llama-3.3-70b-versatile";
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+}
+
+function secPerKmToMinSec(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = Math.round(s % 60);
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+function formatPaceRange(minSec: number | null, maxSec: number | null): string {
+  if (minSec !== null && maxSec !== null)
+    return `${secPerKmToMinSec(minSec)}-${secPerKmToMinSec(maxSec)}/km`;
+  if (minSec !== null) return `>${secPerKmToMinSec(minSec)}/km`;
+  if (maxSec !== null) return `<${secPerKmToMinSec(maxSec)}/km`;
+  return "?";
 }
 
 async function buildContextSummary(geo?: GeoHint): Promise<string> {
@@ -37,7 +52,7 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
     service.getWellnessWeekly(8).catch(() => []),
   ]);
   await new Promise((r) => setTimeout(r, 250));
-  const [loadEntries, running, composed, zones, todayActivities, weather] = await Promise.all([
+  const [loadEntries, running, composed, zones, todayActivities, weather, aq, paceZones] = await Promise.all([
     service.getTrainingLoadSummary(7).catch(() => []),
     service.getWeeklyRunningSummary(7).catch(() => null),
     service.getComposedReadinessFromWellness(wellness).catch(() => null),
@@ -47,6 +62,9 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
     // tem atraso confirmado de ~30 dias). Pedido mínimo: 1 dia.
     service.getRecentActivities(1).catch(() => []),
     getTodayWeather(geo).catch(() => null),
+    // AQ e pace zones: APIs externas, nunca bloqueiam o coach se falharem
+    (geo?.lat && geo?.lon ? getAirQuality(geo.lat, geo.lon) : Promise.resolve(null)).catch(() => null),
+    getIcuPaceZones().catch(() => null),
   ]);
   const latestReadiness = readinessEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), readinessEntries[0]);
   const latestLoad = loadEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), loadEntries[0]);
@@ -67,6 +85,9 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
     zones && zones.heartRateZones.length > 0
       ? `[Zonas de FC REAIS do atleta, Strava]: ${zones.heartRateZones.map((z) => `Z${z.zone} ${z.min}-${z.max}bpm`).join(", ")}. Usa estes valores exatos ao sugerir treinos por zona, em vez de inventar.`
       : "Sem zonas de FC reais disponíveis — usa termos qualitativos (fácil/moderado/forte) em vez de inventar valores em bpm.",
+    paceZones && paceZones.zones.length > 0
+      ? `[PACE ZONES DO ATLETA, Intervals.icu]${paceZones.thresholdSecPerKm ? ` — Threshold ${secPerKmToMinSec(paceZones.thresholdSecPerKm)}/km` : ""}: ${paceZones.zones.map((z) => `${z.name} ${formatPaceRange(z.minSecPerKm, z.maxSecPerKm)}`).join(", ")}. Usa estes paces ao prescrever treinos — formato "X km a M:SS-M:SS/km (FC < Nbpm)", pace é a grandeza primária e FC é limite de controlo.`
+      : "Sem pace zones do Intervals.icu — usa termos qualitativos de pace e zonas de FC.",
     latestReadiness
       ? `Training Readiness do Garmin (CONTEXTO HISTÓRICO, não atual) — último registo de ${latestReadiness.date} (${staleDays} dia(s) atrás): score ${latestReadiness.score}/100, nível ${latestReadiness.level}.${
           staleDays > 1
@@ -77,6 +98,9 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
     weather
       ? `[METEO HOJE, ${weather.locationName}]: máx ${weather.tempMaxC}°C / mín ${weather.tempMinC}°C, agora ${weather.tempNowC}°C com ${weather.humidityNowPct}% humidade, vento máx ${weather.windMaxKmh}km/h, prob. chuva ${weather.precipProbMaxPct}%. OBRIGATÓRIO: ajusta a recomendação ao tempo — com calor (>26°C) sugere horários frescos, hidratação e pace ~10-20s/km mais lento; acima de 32°C desaconselha treinos intensos ao meio do dia; com chuva forte ou vento >40km/h menciona percurso/equipamento.`
       : "Sem dados meteorológicos disponíveis.",
+    aq
+      ? `[QUALIDADE DO AR HOJE]: AQI europeu ${aq.europeanAqi}${aq.europeanAqi > 60 ? " — MÁ" : aq.europeanAqi >= 40 ? " — MÉDIA" : " — BOA"}. REGRA OBRIGATÓRIA: AQI >60 → não prescrever treino outdoor (sugerir indoor ou adiar, explicitamente); AQI 40-60 → só treino fácil outdoor, nada intenso; AQI ≤40 → sem restrição de qualidade do ar.`
+      : "",
     latestLoad ? `ACWR (Garmin, complementar): status ${latestLoad.acwrStatus}, ratio ${latestLoad.acwrRatio}.` : "",
     (() => {
       const todayStr = new Date().toISOString().slice(0, 10);
@@ -96,6 +120,8 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
 
 const SYSTEM_PROMPT_BASE = `Você é um treinador de corrida de longa distância, a falar em português de Portugal (pt-PT), direto e baseado em evidência. Use os dados reais fornecidos abaixo para responder. TSB/CTL/ATL (Intervals.icu) e Training Readiness (Garmin) medem coisas diferentes — TSB é só equilíbrio de carga de treino, Training Readiness combina HRV+sono+stress+carga. NUNCA trates um como substituto do outro; se divergirem, diz isso ao utilizador em vez de escolher um e ignorar o outro. Se a pergunta não puder ser respondida com os dados disponíveis, diga isso claramente em vez de inventar números. Se usar um dado do Garmin marcado como desatualizado, é OBRIGATÓRIO mencionar isso explicitamente. Nunca dê conselhos médicos definitivos — para dor, lesão ou sintomas preocupantes, recomende sempre consultar um profissional de saúde.
 
+Restrições de qualidade do ar (quando AQI presente nos dados): AQI >60 → NÃO prescrever treino outdoor — sugere treino indoor ou adiar, dizê-lo explicitamente. AQI 40-60 → apenas treino fácil outdoor, nunca séries ou intensidade elevada. AQI ≤40 → sem restrição por qualidade do ar.
+
 Para perguntas gerais (ex: "como está a minha forma", "estou apto para treinar"), seja conciso (3-6 frases).
 
 Para pedidos de um TREINO ESPECÍFICO para hoje, responda SEMPRE com DUAS partes na mesma mensagem, nesta ordem exacta:
@@ -103,7 +129,7 @@ Para pedidos de um TREINO ESPECÍFICO para hoje, responda SEMPRE com DUAS partes
 PARTE 1 — Markdown legível para o utilizador:
 - Título ### com emoji e nome do treino
 - Frase de contexto ligando o treino aos sinais do dia
-- Secções **Aquecimento:**, **Sessão Principal:**, **Arrefecimento:** com sub-pontos e zonas de FC reais quando disponíveis
+- Secções **Aquecimento:**, **Sessão Principal:**, **Arrefecimento:** — prescreve cada bloco com PACE alvo (min/km, intervalo de ±5s) como grandeza primária e FC máxima como limite de controlo, no formato "X km a M:SS-M:SS/km (FC < Nbpm)"; se não houver pace zones, usa só FC
 - **🎯 Objetivo:** e **💡 Pós-Treino:** no final
 
 PARTE 2 — Bloco estruturado para o Intervals.icu (obrigatório):
@@ -125,8 +151,8 @@ Cooldown
 
 Regras obrigatórias:
 - "m" significa minutos, NUNCA metros. Usa "mtr" ou "km" para distâncias (ex: 800mtr, 1.6km).
-- Pace no formato MM:SS/km (ex: 3:50-4:00/km Pace).
-- Zonas: Z1, Z2, Z3, Z4, Z5 ou percentagem HR (ex: 70-80% HR). Usa as zonas reais do atleta se fornecidas.
+- Pace no formato MM:SS/km (ex: 3:50-4:00/km Pace). Quando o contexto incluir pace zones do atleta, usa pace como target em cada passo de corrida (ex: 1km 4:30-4:40/km Pace); quando não houver pace zones, usa % HR ou zonas Z1-Z5.
+- Zonas: Z1, Z2, Z3, Z4, Z5 ou percentagem HR (ex: 70-80% HR). Usa as zonas reais do atleta se fornecidas. Pace zones têm prioridade sobre zonas de HR para blocos de corrida.
 - Repetições: número seguido de "x" numa linha própria, depois os passos indentados com "- ".
 - Secções separadas por linha em branco. Nomes de secção livres (Warmup, Main Set, Cooldown, etc.).
 Não expliques o formato — vai direto ao conteúdo dentro das tags.
