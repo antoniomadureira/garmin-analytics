@@ -139,10 +139,10 @@ export function classifyWeatherImpact(
   if (aq) {
     if (aq.europeanAqi > 60) {
       aqLevel = "warning";
-      aqMessage = `qualidade do ar má (AQI ${aq.europeanAqi}) — treino indoor ou adiar`;
+      aqMessage = `qualidade do ar má — treino indoor ou adiar`;
     } else if (aq.europeanAqi >= 40) {
       aqLevel = "caution";
-      aqMessage = `AQI ${aq.europeanAqi} — evita séries intensas, treino fácil ok`;
+      aqMessage = `evita séries intensas, fácil ok`;
     }
   }
 

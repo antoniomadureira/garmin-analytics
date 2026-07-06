@@ -49,7 +49,7 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
   // em 2 lotes pequenos com pausa entre eles.
   const [readinessEntries, wellness] = await Promise.all([
     service.getTrainingReadiness(10).catch(() => []),
-    service.getWellnessWeekly(8).catch(() => []),
+    service.getWellnessWeekly(30).catch(() => []),
   ]);
   await new Promise((r) => setTimeout(r, 250));
   const [loadEntries, running, composed, zones, todayActivities, weather, aq, paceZones] = await Promise.all([

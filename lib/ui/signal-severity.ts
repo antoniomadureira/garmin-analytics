@@ -20,9 +20,9 @@ export function hrvSeverity(pct: number): SignalSeverity {
 
 // FC Repouso: delta em bpm vs baseline (positivo = acima da média = pior)
 export function rhrSeverity(deltaBpm: number): SignalSeverity {
-  if (deltaBpm <= 2) return "good";
-  if (deltaBpm <= 5) return "warn";
-  return "bad";
+  if (deltaBpm < 2) return "good";   // ≤1 bpm acima: ruído de medição, ok
+  if (deltaBpm <= 5) return "warn";  // 2-5 bpm elevada: atenção
+  return "bad";                       // >5 bpm elevada: recuperação comprometida
 }
 
 // Body Battery: valor máximo do dia (%)

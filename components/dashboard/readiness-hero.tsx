@@ -209,10 +209,13 @@ export function ReadinessHero({ readiness, load, recovery, weather }: HeroProps)
                 {weather!.tempNowC !== undefined && (
                   <span>agora {weather!.tempNowC}° · máx {weather!.tempMaxC}°</span>
                 )}
-                {weather!.aqi != null && (
+                {weather!.aqi != null && !weather!.message && (
                   <span>· AQI {weather!.aqi}</span>
                 )}
-                {weather!.message && (
+                {weather!.aqi != null && weather!.message && (
+                  <span>· AQI {weather!.aqi} — {weather!.message}</span>
+                )}
+                {weather!.aqi == null && weather!.message && (
                   <span>· {weather!.message}</span>
                 )}
               </div>

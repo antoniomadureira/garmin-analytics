@@ -75,7 +75,7 @@
  */
 
 import { kv } from "@/lib/redis";
-import { computeHrvDeltaPct, formatHrvDeltaPct } from "@/lib/utils/hrv";
+import { computeHrvDeltaPct, formatHrvDeltaPct, computeHrvDeviation } from "@/lib/utils/hrv";
 
 // -----------------------------------------------------------------------------
 // 1. CONST OBJECTS DE METRIC NAMES (agrupados por domínio funcional)
@@ -733,7 +733,7 @@ export class FreddyDataService {
     level: "green" | "yellow" | "red" | "unknown";
     signals: { label: string; status: "bom" | "ok" | "atencao"; detail: string; subScore: number | null }[];
   }> {
-    const wellness = await this.getWellnessWeekly(8);
+    const wellness = await this.getWellnessWeekly(30);
     return this.getComposedReadinessFromWellness(wellness);
   }
 
@@ -753,8 +753,7 @@ export class FreddyDataService {
     const battery = await this.getBodyBatteryWeekly(3).catch(() => []);
     const latest = wellness[wellness.length - 1];
     const latestBattery = battery[battery.length - 1];
-    const hrvValues = wellness.map((w) => w.hrv).filter((v): v is number => v !== null);
-    const hrvAvg = hrvValues.length ? hrvValues.reduce((a, b) => a + b, 0) / hrvValues.length : null;
+    const { hrv: latestHrv, baseline: hrvBaseline, deltaPct: hrvDeltaPct } = computeHrvDeviation(wellness);
     const rhrValues = wellness.map((w) => w.restingHr).filter((v): v is number => v !== null);
     const rhrAvg = rhrValues.length ? rhrValues.reduce((a, b) => a + b, 0) / rhrValues.length : null;
 
@@ -768,12 +767,11 @@ export class FreddyDataService {
       signals.push({ label: "Carga de Treino (TSB)", status, detail: `${tsb > 0 ? "+" : ""}${tsb}`, subScore });
     }
 
-    // HRV vs média 7d
-    if (latest?.hrv !== null && latest?.hrv !== undefined && hrvAvg !== null) {
-      const diffPct = computeHrvDeltaPct(latest.hrv, hrvAvg);
-      const status = diffPct >= -5 ? "bom" : diffPct >= -10 ? "ok" : "atencao";
-      const subScore = Math.max(0, Math.min(100, Math.round(70 + diffPct * 3)));
-      signals.push({ label: "HRV", status, detail: `${latest.hrv}ms (${formatHrvDeltaPct(latest.hrv, hrvAvg)} vs média)`, subScore });
+    // HRV vs baseline 30d (exclui hoje — computeHrvDeviation é a fonte única)
+    if (latestHrv !== null && hrvBaseline !== null && hrvDeltaPct !== null) {
+      const status = hrvDeltaPct >= -5 ? "bom" : hrvDeltaPct >= -10 ? "ok" : "atencao";
+      const subScore = Math.max(0, Math.min(100, Math.round(70 + hrvDeltaPct * 3)));
+      signals.push({ label: "HRV", status, detail: `${latestHrv}ms (${formatHrvDeltaPct(latestHrv, hrvBaseline)} vs média 30d)`, subScore });
     }
 
     // FC repouso vs média 7d (inverso: mais alto que a média é mau sinal)
@@ -890,11 +888,9 @@ export class FreddyDataService {
 
     const latestBattery = battery.length ? battery[battery.length - 1] : null;
     const latest = wellness.length ? wellness[wellness.length - 1] : null;
-    const baseline = wellness.slice(0, -1);
-
-    const hrvValues = baseline.filter((w) => w.hrv !== null);
-    const hrvBaseline = hrvValues.length ? roundTo(hrvValues.reduce((s, w) => s + (w.hrv ?? 0), 0) / hrvValues.length, 1) : null;
-    const rhrValues = baseline.filter((w) => w.restingHr !== null);
+    const { baseline: hrvBaseline } = computeHrvDeviation(wellness);
+    const baselineEntries = wellness.slice(0, -1);
+    const rhrValues = baselineEntries.filter((w) => w.restingHr !== null);
     const restingHrBaseline = rhrValues.length ? roundTo(rhrValues.reduce((s, w) => s + (w.restingHr ?? 0), 0) / rhrValues.length, 1) : null;
 
     return {
