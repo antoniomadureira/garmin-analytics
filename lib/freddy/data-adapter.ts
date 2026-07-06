@@ -137,15 +137,11 @@ function toToolArgs(args: QueryArgs, mode: { start: string; end: string } | { da
 async function fetchFromFreddyByRange(args: QueryArgs, start: string, end: string): Promise<Record<string, unknown>> {
   return withFreddyLimit(async () => {
     const client = await getFreddyClient();
-    try {
-      const result = await client.callTool({
-        name: "query_metrics",
-        arguments: toToolArgs(args, { start, end }),
-      });
-      return parseToolResult(result, args.metrics, `range:${start}..${end}`);
-    } finally {
-      await client.close().catch(() => {});
-    }
+    const result = await client.callTool({
+      name: "query_metrics",
+      arguments: toToolArgs(args, { start, end }),
+    });
+    return parseToolResult(result, args.metrics, `range:${start}..${end}`);
   });
 }
 
@@ -158,15 +154,11 @@ async function fetchFromFreddyByRange(args: QueryArgs, start: string, end: strin
 async function fetchFromFreddyLegacyDays(args: QueryArgs): Promise<Record<string, unknown>> {
   return withFreddyLimit(async () => {
     const client = await getFreddyClient();
-    try {
-      const result = await client.callTool({
-        name: "query_metrics",
-        arguments: toToolArgs(args, { days: args.days ?? 7 }),
-      });
-      return parseToolResult(result, args.metrics, `days:${args.days ?? 7}`);
-    } finally {
-      await client.close().catch(() => {});
-    }
+    const result = await client.callTool({
+      name: "query_metrics",
+      arguments: toToolArgs(args, { days: args.days ?? 7 }),
+    });
+    return parseToolResult(result, args.metrics, `days:${args.days ?? 7}`);
   });
 }
 
@@ -260,15 +252,11 @@ async function cachedQueryRawText(args: { metrics: string[]; days?: number; star
 
   const firstText = await withFreddyLimit(async () => {
     const client = await getFreddyClient();
-    try {
-      const result = await client.callTool({ name: "query_metrics", arguments: { metrics: args.metrics, start, end } });
-      const content = (result as { content?: Array<{ type: string; text?: string }> }).content;
-      const text = content?.find((c) => c.type === "text")?.text;
-      if (!text) throw new Error("Resposta do query_metrics sem content de texto.");
-      return text;
-    } finally {
-      await client.close().catch(() => {});
-    }
+    const result = await client.callTool({ name: "query_metrics", arguments: { metrics: args.metrics, start, end } });
+    const content = (result as { content?: Array<{ type: string; text?: string }> }).content;
+    const text = content?.find((c) => c.type === "text")?.text;
+    if (!text) throw new Error("Resposta do query_metrics sem content de texto.");
+    return text;
   });
 
   kv.set(key, firstText, { ex: 15 * 60 }).catch((e) =>

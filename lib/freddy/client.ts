@@ -13,13 +13,19 @@ import { getValidAccessToken } from "@/lib/freddy/oauth";
 
 const FREDDY_MCP_URL = "https://freddy.coach/mcp";
 
-/**
- * Não fazer cache do client entre invocações: o access_token pode ter sido
- * renovado por getValidAccessToken() desde a última chamada, e um client
- * MCP já conectado não atualiza o header automaticamente. Reconectar é
- * mais barato do que gerir staleness de token num client persistente.
- */
+// [Certo] Singleton por instância de módulo (warm serverless). Recriado
+// automaticamente quando onerror assinala falha assíncrona do transporte —
+// evita que um close() por engano ou um erro de rede condene todas as
+// chamadas seguintes na mesma invocação.
+let singleton: Client | null = null;
+let singletonBroken = false;
+
 export async function getFreddyClient(): Promise<Client> {
+  if (singleton && !singletonBroken) return singleton;
+
+  singleton = null;
+  singletonBroken = false;
+
   const accessToken = await getValidAccessToken();
 
   const transport = new StreamableHTTPClientTransport(new URL(FREDDY_MCP_URL), {
@@ -31,7 +37,24 @@ export async function getFreddyClient(): Promise<Client> {
   });
 
   const client = new Client({ name: "freddy-running-intelligence", version: "0.1.0" });
+
+  const onErr = (e: unknown) => {
+    singletonBroken = true;
+    console.warn(JSON.stringify({ evt: "mcp_client_error", err: String(e).slice(0, 150) }));
+  };
+  client.onerror = onErr;
+
+  // [Suposição] StreamableHTTPClientTransport pode expor onerror — regista
+  // defensivamente sem quebrar se o SDK não o suportar nesta versão.
+  if ("onerror" in transport) {
+    (transport as unknown as { onerror: (e: unknown) => void }).onerror = (e: unknown) => {
+      singletonBroken = true;
+      console.warn(JSON.stringify({ evt: "mcp_transport_error", err: String(e).slice(0, 150) }));
+    };
+  }
+
   await client.connect(transport);
+  singleton = client;
   return client;
 }
 
