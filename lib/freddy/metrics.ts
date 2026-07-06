@@ -75,6 +75,7 @@
  */
 
 import { kv } from "@/lib/redis";
+import { computeHrvDeltaPct, formatHrvDeltaPct } from "@/lib/utils/hrv";
 
 // -----------------------------------------------------------------------------
 // 1. CONST OBJECTS DE METRIC NAMES (agrupados por domínio funcional)
@@ -769,10 +770,10 @@ export class FreddyDataService {
 
     // HRV vs média 7d
     if (latest?.hrv !== null && latest?.hrv !== undefined && hrvAvg !== null) {
-      const diffPct = ((latest.hrv - hrvAvg) / hrvAvg) * 100;
+      const diffPct = computeHrvDeltaPct(latest.hrv, hrvAvg);
       const status = diffPct >= -5 ? "bom" : diffPct >= -10 ? "ok" : "atencao";
       const subScore = Math.max(0, Math.min(100, Math.round(70 + diffPct * 3)));
-      signals.push({ label: "HRV", status, detail: `${latest.hrv}ms (${diffPct >= 0 ? "+" : ""}${diffPct.toFixed(0)}% vs média)`, subScore });
+      signals.push({ label: "HRV", status, detail: `${latest.hrv}ms (${formatHrvDeltaPct(latest.hrv, hrvAvg)} vs média)`, subScore });
     }
 
     // FC repouso vs média 7d (inverso: mais alto que a média é mau sinal)

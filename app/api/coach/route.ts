@@ -176,10 +176,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sem mensagens." }, { status: 400 });
   }
 
+  // Mesma cadeia de resolução do dashboard: cookie geo (GPS) → env → geo-IP → default
+  const geoCookie = req.cookies.get("geo")?.value;
+  const [cookieLat, cookieLon] = geoCookie?.split(",") ?? [];
+  const vercelLat = req.headers.get("x-vercel-ip-latitude");
+  const vercelLon = req.headers.get("x-vercel-ip-longitude");
   const geo: GeoHint = {
-    lat: req.headers.get("x-vercel-ip-latitude"),
-    lon: req.headers.get("x-vercel-ip-longitude"),
-    city: req.headers.get("x-vercel-ip-city"),
+    lat: cookieLat ?? process.env.WEATHER_LAT ?? vercelLat ?? null,
+    lon: cookieLon ?? process.env.WEATHER_LON ?? vercelLon ?? null,
+    city: cookieLat ? null : req.headers.get("x-vercel-ip-city"),
+    source: cookieLat ? "cookie" : process.env.WEATHER_LAT ? "env" : vercelLat ? "vercel-geo-ip" : "default",
   };
   const context = await buildContextSummary(geo);
 

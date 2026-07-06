@@ -3,6 +3,7 @@
 import type { ReadinessCardData } from "@/components/dashboard/readiness-card";
 import type { TrainingLoadCardData } from "@/components/dashboard/training-load-card";
 import type { RecoveryCardData } from "@/components/dashboard/recovery-card";
+import { computeHrvDeltaPct } from "@/lib/utils/hrv";
 
 interface HeroProps {
   readiness: ReadinessCardData;
@@ -95,9 +96,9 @@ export function ReadinessHero({ readiness, load, recovery, weather }: HeroProps)
   // texto, dois sítios, zero divergência possível.
   const verdict = { title: titles[tone], subtitle: readiness.recommendation };
 
-  // Deltas HRV e FC repouso vs baseline
+  // Deltas HRV (%) e FC repouso (ms absoluto) vs baseline
   const hrvDelta = recovery.hrv && recovery.hrvBaseline
-    ? Math.round(recovery.hrv - recovery.hrvBaseline) : null;
+    ? computeHrvDeltaPct(recovery.hrv, recovery.hrvBaseline) : null;
   const rhrDelta = recovery.restingHr && recovery.restingHrBaseline
     ? Math.round(recovery.restingHr - recovery.restingHrBaseline) : null;
 
@@ -137,7 +138,7 @@ export function ReadinessHero({ readiness, load, recovery, weather }: HeroProps)
               label="HRV"
               value={recovery.hrv ? `${recovery.hrv}ms` : null}
               delta={hrvDelta}
-              deltaUnit="ms"
+              deltaUnit="%"
               invertDelta={false}
             />
             <Signal
