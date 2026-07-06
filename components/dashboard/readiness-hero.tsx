@@ -8,7 +8,13 @@ interface HeroProps {
   readiness: ReadinessCardData;
   load: TrainingLoadCardData;
   recovery: RecoveryCardData;
-  weather?: { level: "ok" | "caution" | "warning"; message: string | null } | null;
+  weather?: {
+    level: "ok" | "caution" | "warning";
+    message: string | null;
+    tempNowC?: number;
+    tempMaxC?: number;
+    aqi?: number | null;
+  } | null;
 }
 
 function ScoreRing({ score, tone }: { score: number; tone: "green" | "yellow" | "red" }) {
@@ -151,8 +157,25 @@ export function ReadinessHero({ readiness, load, recovery, weather }: HeroProps)
             />
           </div>
 
+          {weather && (weather.tempNowC !== undefined || weather.aqi != null) && (
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-500">
+              {weather.tempNowC !== undefined && (
+                <span>agora {weather.tempNowC}° · máx {weather.tempMaxC}°</span>
+              )}
+              {weather.aqi != null && (
+                <>
+                  <span>·</span>
+                  <span className={
+                    weather.aqi > 60 ? "text-red-400" :
+                    weather.aqi >= 40 ? "text-amber-400" : ""
+                  }>AQI {weather.aqi}</span>
+                </>
+              )}
+            </div>
+          )}
+
           {weather?.message && (
-            <div className={`mt-2 flex items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] leading-relaxed ${
+            <div className={`mt-1 flex items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] leading-relaxed ${
               weather.level === "warning"
                 ? "bg-red-950/40 text-red-300"
                 : "bg-amber-950/30 text-amber-300"

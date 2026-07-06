@@ -11,8 +11,9 @@ import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
 import { ReadinessHero } from "@/components/dashboard/readiness-hero";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 import { getShoesAndActivities } from "@/lib/strava-lab/client";
-import { headers } from "next/headers";
-import { getTodayWeather, classifyWeatherImpact, type GeoHint } from "@/lib/weather/client";
+import { headers, cookies } from "next/headers";
+import { getTodayWeather, getAirQuality, classifyWeatherImpact, type GeoHint } from "@/lib/weather/client";
+import { GeoBeacon } from "@/components/geo-beacon";
 import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
 import { StatusSummary } from "@/components/ui/status-summary";
 
@@ -268,13 +269,22 @@ export default async function DashboardPage() {
     connectError = humanizeError(err);
   }
 
-  // [Certo] Geo-IP automático da Vercel — a meteo segue o utilizador
-  // (viagens, férias) sem pedir permissões de GPS ao browser.
-  const hdrs = await headers();
+  // [Certo] Cadeia de resolução geográfica: cookie geo (GPS do browser,
+  // escrito por GeoBeacon) → WEATHER_LAT/LON env (override manual) →
+  // geo-IP Vercel (dinâmico, sem permissão) → default Porto.
+  const [hdrs, cookieStore] = await Promise.all([headers(), cookies()]);
+  const geoCookie = cookieStore.get("geo")?.value; // "lat,lon"
+  const [cookieLat, cookieLon] = geoCookie?.split(",") ?? [];
+  const vercelLat = hdrs.get("x-vercel-ip-latitude");
+  const vercelLon = hdrs.get("x-vercel-ip-longitude");
+  const resolvedLat = cookieLat ?? process.env.WEATHER_LAT ?? vercelLat ?? null;
+  const resolvedLon = cookieLon ?? process.env.WEATHER_LON ?? vercelLon ?? null;
+  const geoSource = cookieLat ? "cookie" : process.env.WEATHER_LAT ? "env" : vercelLat ? "vercel-geo-ip" : "default";
   const geo: GeoHint = {
-    lat: hdrs.get("x-vercel-ip-latitude"),
-    lon: hdrs.get("x-vercel-ip-longitude"),
-    city: hdrs.get("x-vercel-ip-city"),
+    lat: resolvedLat,
+    lon: resolvedLon,
+    city: cookieLat ? null : hdrs.get("x-vercel-ip-city"),
+    source: geoSource,
   };
 
   const [readinessResult, trainingLoadResult, yoyResult, runningResult, recoveryResult, weatherImpact] = await Promise.all([
@@ -283,7 +293,15 @@ export default async function DashboardPage() {
     loadYoyKpis(service, connectError),
     loadRunningSummary(service, connectError),
     loadRecoveryInsights(service, connectError),
-    getTodayWeather(geo).then(classifyWeatherImpact).catch(() => null),
+    Promise.all([
+      getTodayWeather(geo).catch(() => null),
+      (resolvedLat && resolvedLon
+        ? getAirQuality(resolvedLat, resolvedLon)
+        : Promise.resolve(null)
+      ).catch(() => null),
+    ]).then(([w, aq]) =>
+      w ? { ...classifyWeatherImpact(w, aq), tempNowC: w.tempNowC, tempMaxC: w.tempMaxC, aqi: aq?.europeanAqi ?? null } : null
+    ).catch(() => null),
   ]);
 
   // Fallback Strava: quando Freddy está completamente indisponível
@@ -299,6 +317,7 @@ export default async function DashboardPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <DashboardNav />
+      <GeoBeacon />
 
       <main className="mx-auto max-w-4xl space-y-6 px-4 py-6">
 
