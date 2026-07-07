@@ -31,7 +31,7 @@
  * também client_secret no pedido (client_secret_post), não só client_id.
  */
 
-import { kv } from "@/lib/redis";
+import { kv } from "../redis";
 
 const FREDDY_BASE = "https://freddy.coach";
 const CLIENT_KV_KEY = "freddy:oauth_client";

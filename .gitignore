@@ -5,3 +5,6 @@ out
 .env.local
 *.log
 tsconfig.tsbuildinfo
+
+# Real Freddy fixtures — stay local, never committed
+tests/fixtures/

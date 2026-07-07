@@ -9,7 +9,7 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { getValidAccessToken } from "@/lib/freddy/oauth";
+import { getValidAccessToken } from "./oauth";
 
 const FREDDY_MCP_URL = "https://freddy.coach/mcp";
 

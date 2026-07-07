@@ -75,7 +75,7 @@
  */
 
 import { kv } from "@/lib/redis";
-import { computeHrvDeltaPct, formatHrvDeltaPct, computeHrvDeviation } from "@/lib/utils/hrv";
+import { formatHrvDeltaPct, computeHrvDeviation } from "@/lib/utils/hrv";
 
 // -----------------------------------------------------------------------------
 // 1. CONST OBJECTS DE METRIC NAMES (agrupados por domínio funcional)
@@ -1837,7 +1837,7 @@ async function fetchInQuarterlyChunks(
 }
 
 /** Extrai valores escalares de uma métrica, agrupados por data (cabeçalho "YYYY-MM-DD:"). */
-function extractValuesByDate(text: string, metricName: string): Map<string, number[]> {
+export function extractValuesByDate(text: string, metricName: string): Map<string, number[]> {
   const lines = text.split("\n");
   const result = new Map<string, number[]>();
   let currentDate: string | null = null;

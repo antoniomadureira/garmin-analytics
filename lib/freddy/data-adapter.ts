@@ -49,7 +49,7 @@ function extractBalancedJson(text: string, startIndex: number): { json: string; 
   return null;
 }
 
-function parseQueryMetricsText(text: string): Record<string, unknown> {
+export function parseQueryMetricsText(text: string): Record<string, unknown> {
   const lines = text.split("\n");
   const result: Record<string, unknown> = {};
   let currentDate: string | null = null;
@@ -170,7 +170,7 @@ async function fetchFromFreddyLegacyDays(args: QueryArgs): Promise<Record<string
  *  3. escreve frescos + sentinels de vazio, devolve o merge.
  * Erro do Freddy COM hits em cache → devolve os hits (degradação suave).
  */
-async function cachedQueryMetrics(args: QueryArgs): Promise<Record<string, unknown>> {
+export async function cachedQueryMetrics(args: QueryArgs): Promise<Record<string, unknown>> {
   const { start, end } = resolveRange(args);
   const dates = enumerateDates(start, end);
   const sig = metricsSignature(args.metrics, !!args.includeRaw);
