@@ -4,6 +4,7 @@ export const maxDuration = 60;
 import { humanizeError } from "@/lib/utils/error-message";
 import { DashboardNav } from "@/components/dashboard/nav";
 import type { ReadinessCardData, RecoveryCardData } from "@/lib/types/readiness";
+import type { WellnessDay } from "@/lib/freddy/metrics";
 import { TrainingLoadCard, type TrainingLoadCardData } from "@/components/dashboard/training-load-card";
 import { RunningSummaryCard, type RunningSummaryCardData } from "@/components/dashboard/running-summary-card";
 import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
@@ -26,8 +27,19 @@ import { StatusSummary } from "@/components/ui/status-summary";
 // rebentar ou fingir sucesso.
 // =============================================================================
 
-async function loadReadiness(service: Awaited<ReturnType<typeof getFreddyDataService>> | null, connectError?: string): Promise<{ data: ReadinessCardData; isReal: boolean; error?: string }> {
-  const mock: ReadinessCardData = {
+// [Certo] Loader combinado: busca wellness UMA vez e partilha-o entre
+// getComposedReadinessFromWellness e getRecoveryInsightsFromWellness.
+// A versão anterior tinha duas chamadas separadas a getWellnessWeekly(30)
+// que podiam divergir se o timing de sync do Freddy fosse diferente entre
+// os dois pedidos (edge-case confirmado em análise de 2026-07-07).
+async function loadReadinessAndRecovery(
+  service: Awaited<ReturnType<typeof getFreddyDataService>> | null,
+  connectError?: string,
+): Promise<[
+  { data: ReadinessCardData; isReal: boolean; error?: string },
+  { data: RecoveryCardData; isReal: boolean; error?: string },
+]> {
+  const readinessMock: ReadinessCardData = {
     compositeScore: 78,
     recommendation: "Sinais maioritariamente positivos — janela razoável para treino de qualidade (séries, tempo run).",
     level: "green",
@@ -43,40 +55,77 @@ async function loadReadiness(service: Awaited<ReturnType<typeof getFreddyDataSer
     garminStaleDaysAgo: null,
     sleepScoreValue: 84,
   };
-  if (!service) return { data: mock, isReal: false, error: connectError };
-  try {
-    const [composed, readinessEntries] = await Promise.all([
-      service.getComposedReadiness(),
-      service.getTrainingReadiness(10), // [Certo] janela maior — este metric tem atraso de sync confirmado (até vários dias)
-    ]);
-    const latest = readinessEntries.reduce(
-      (best, cur) => (!best || cur.date > best.date ? cur : best),
-      readinessEntries[0]
-    );
+  const recoveryMock: RecoveryCardData = {
+    recoveryTimeHours: 18,
+    acuteLoad: 1.05,
+    bodyBatteryMax: 92,
+    bodyBatteryMin: 24,
+    avgStress: 28,
+    hrv: 38,
+    hrvBaseline: 35,
+    restingHr: 54,
+    restingHrBaseline: 53,
+  };
 
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const staleDaysAgo = latest ? Math.round((new Date(todayStr).getTime() - new Date(latest.date).getTime()) / 86400000) : null;
-
-    if (composed.compositeScore === null && !latest) {
-      throw new Error("Sem sinais frescos (Intervals.icu) nem registo de Training Readiness do Garmin.");
-    }
-
-    return {
-      data: {
-        compositeScore: composed.compositeScore,
-        recommendation: composed.recommendation,
-        level: composed.level,
-        signals: composed.signals.map((s) => ({ label: s.label, status: s.status, detail: s.detail })),
-        garminScore: latest?.score ?? null,
-        garminLevel: latest?.level ?? "—",
-        garminStaleDaysAgo: staleDaysAgo && staleDaysAgo > 0 ? staleDaysAgo : null,
-        sleepScoreValue: composed.signals.find((s) => s.label === "Sono")?.subScore ?? null,
-      },
-      isReal: true,
-    };
-  } catch (err) {
-    return { data: mock, isReal: false, error: humanizeError(err) };
+  if (!service) {
+    return [
+      { data: readinessMock, isReal: false, error: connectError },
+      { data: recoveryMock, isReal: false, error: connectError },
+    ];
   }
+
+  // Fetch wellness once — shared by both sub-loaders below
+  let wellness: WellnessDay[] = [];
+  try {
+    wellness = await service.getWellnessWeekly(30);
+  } catch { /* empty → graceful degradation in sub-loaders */ }
+
+  const [readinessResult, recoveryResult] = await Promise.all([
+    (async (): Promise<{ data: ReadinessCardData; isReal: boolean; error?: string }> => {
+      try {
+        const [composed, readinessEntries] = await Promise.all([
+          service.getComposedReadinessFromWellness(wellness),
+          service.getTrainingReadiness(10), // [Certo] janela maior — atraso de sync confirmado (até vários dias)
+        ]);
+        const latest = readinessEntries.reduce(
+          (best, cur) => (!best || cur.date > best.date ? cur : best),
+          readinessEntries[0],
+        );
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const staleDaysAgo = latest
+          ? Math.round((new Date(todayStr).getTime() - new Date(latest.date).getTime()) / 86400000)
+          : null;
+        if (composed.compositeScore === null && !latest) {
+          throw new Error("Sem sinais frescos (Intervals.icu) nem registo de Training Readiness do Garmin.");
+        }
+        return {
+          data: {
+            compositeScore: composed.compositeScore,
+            recommendation: composed.recommendation,
+            level: composed.level,
+            signals: composed.signals.map((s) => ({ label: s.label, status: s.status, detail: s.detail })),
+            garminScore: latest?.score ?? null,
+            garminLevel: latest?.level ?? "—",
+            garminStaleDaysAgo: staleDaysAgo && staleDaysAgo > 0 ? staleDaysAgo : null,
+            sleepScoreValue: composed.signals.find((s) => s.label === "Sono")?.subScore ?? null,
+          },
+          isReal: true,
+        };
+      } catch (err) {
+        return { data: readinessMock, isReal: false, error: humanizeError(err) };
+      }
+    })(),
+    (async (): Promise<{ data: RecoveryCardData; isReal: boolean; error?: string }> => {
+      try {
+        const insights = await service.getRecoveryInsightsFromWellness(wellness);
+        return { data: insights, isReal: true };
+      } catch (err) {
+        return { data: recoveryMock, isReal: false, error: humanizeError(err) };
+      }
+    })(),
+  ]);
+
+  return [readinessResult, recoveryResult];
 }
 
 async function loadTrainingLoad(service: Awaited<ReturnType<typeof getFreddyDataService>> | null, connectError?: string): Promise<{ data: TrainingLoadCardData; isReal: boolean; error?: string }> {
@@ -190,27 +239,6 @@ async function loadRunningSummary(service: Awaited<ReturnType<typeof getFreddyDa
   }
 }
 
-async function loadRecoveryInsights(service: Awaited<ReturnType<typeof getFreddyDataService>> | null, connectError?: string): Promise<{ data: RecoveryCardData; isReal: boolean; error?: string }> {
-  const mock: RecoveryCardData = {
-    recoveryTimeHours: 18,
-    acuteLoad: 1.05,
-    bodyBatteryMax: 92,
-    bodyBatteryMin: 24,
-    avgStress: 28,
-    hrv: 38,
-    hrvBaseline: 35,
-    restingHr: 54,
-    restingHrBaseline: 53,
-  };
-  if (!service) return { data: mock, isReal: false, error: connectError };
-  try {
-    const insights = await service.getRecoveryInsights();
-    return { data: insights, isReal: true };
-  } catch (err) {
-    return { data: mock, isReal: false, error: humanizeError(err) };
-  }
-}
-
 /**
  * [Suposição] O radar "Estado de Forma" não tem uma única métrica
  * canónica no Freddy — é uma normalização heurística minha a partir de
@@ -286,12 +314,11 @@ export default async function DashboardPage() {
     source: geoSource,
   };
 
-  const [readinessResult, trainingLoadResult, yoyResult, runningResult, recoveryResult, weatherImpact] = await Promise.all([
-    loadReadiness(service, connectError),
+  const [[readinessResult, recoveryResult], trainingLoadResult, yoyResult, runningResult, weatherImpact] = await Promise.all([
+    loadReadinessAndRecovery(service, connectError),
     loadTrainingLoad(service, connectError),
     loadYoyKpis(service, connectError),
     loadRunningSummary(service, connectError),
-    loadRecoveryInsights(service, connectError),
     Promise.all([
       getTodayWeather(geo).catch(() => null),
       (resolvedLat && resolvedLon

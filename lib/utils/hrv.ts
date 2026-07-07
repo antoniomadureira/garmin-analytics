@@ -19,17 +19,23 @@ export interface HrvDeviationResult {
 
 /**
  * Fonte única de cálculo do desvio de HRV.
- * Baseline = média dos dias ANTERIORES ao último (exclui hoje para não
- * ser auto-referencial). Janela determinada pelo chamador (usar 30d).
+ * "Actual" = último entry COM hrv não-nulo — evita perder o sinal quando
+ * hoje ainda não sincronizou (hrv: null) mas ontem tem valor.
+ * Baseline = média dos entries ANTERIORES ao actual (não auto-referencial).
+ * Janela determinada pelo chamador (usar 30d).
  */
 export function computeHrvDeviation(wellness: { hrv: number | null }[]): HrvDeviationResult {
-  const latest = wellness.length ? wellness[wellness.length - 1] : null;
-  const hrv = latest?.hrv ?? null;
-  const prevEntries = wellness.slice(0, -1);
-  const vals = prevEntries.map((w) => w.hrv).filter((v): v is number => v !== null);
+  // Walk backwards to find the most recent entry with a real HRV value
+  let latestIdx = -1;
+  for (let i = wellness.length - 1; i >= 0; i--) {
+    if (wellness[i].hrv !== null) { latestIdx = i; break; }
+  }
+  if (latestIdx === -1) return { hrv: null, baseline: null, deltaPct: null };
+  const hrv = wellness[latestIdx].hrv as number;
+  const vals = wellness.slice(0, latestIdx).map((w) => w.hrv).filter((v): v is number => v !== null);
   const baseline = vals.length
     ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10
     : null;
-  const deltaPct = hrv !== null && baseline !== null ? computeHrvDeltaPct(hrv, baseline) : null;
+  const deltaPct = baseline !== null ? computeHrvDeltaPct(hrv, baseline) : null;
   return { hrv, baseline, deltaPct };
 }

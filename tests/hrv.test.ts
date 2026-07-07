@@ -77,8 +77,42 @@ describe("computeHrvDeviation", () => {
     expect(baseline).toBe(50);
   });
 
-  it("retorna null quando hrv mais recente é null", () => {
+  // ── Cenário crítico: hoje sem sync de HRV ───────────────────────────────
+  // Quando o último entry tem hrv:null (hoje ainda não sincronizou), o
+  // "actual" recua para o entry anterior com valor — nunca devolve null
+  // só por causa do dia mais recente.
+  it("usa o entry anterior quando o mais recente tem hrv null (hoje sem sync)", () => {
+    // ontem = 35ms, hoje = null → actual deve ser 35
+    const wellness = [{ hrv: 40 }, { hrv: 42 }, { hrv: 35 }, { hrv: null }];
+    const { hrv } = computeHrvDeviation(wellness);
+    expect(hrv).toBe(35);
+  });
+
+  it("baseline exclui o entry 'actual' mesmo quando hoje tem hrv null", () => {
+    // actual = ontem (35ms); baseline = média de [40, 42] = 41, NÃO inclui 35
+    const wellness = [{ hrv: 40 }, { hrv: 42 }, { hrv: 35 }, { hrv: null }];
+    const { baseline } = computeHrvDeviation(wellness);
+    expect(baseline).toBe(41);
+  });
+
+  it("delta correto no cenário hoje-sem-hrv + ontem-com-hrv", () => {
+    // actual = 35, baseline = 41 → delta = (35-41)/41 ≈ -14.6%
+    const wellness = [{ hrv: 40 }, { hrv: 42 }, { hrv: 35 }, { hrv: null }];
+    const { deltaPct } = computeHrvDeviation(wellness);
+    expect(deltaPct).toBe(computeHrvDeltaPct(35, 41));
+  });
+
+  it("quando só o penúltimo tem hrv: actual=40, baseline null (sem histórico anterior)", () => {
+    // actual = 40 (único com valor), sem entries anteriores → baseline null
     const wellness = [{ hrv: 40 }, { hrv: null }];
+    const { hrv, baseline, deltaPct } = computeHrvDeviation(wellness);
+    expect(hrv).toBe(40);
+    expect(baseline).toBeNull();
+    expect(deltaPct).toBeNull();
+  });
+
+  it("retorna hrv e deltaPct null apenas quando NENHUM entry tem hrv", () => {
+    const wellness = [{ hrv: null }, { hrv: null }];
     const { hrv, deltaPct } = computeHrvDeviation(wellness);
     expect(hrv).toBeNull();
     expect(deltaPct).toBeNull();

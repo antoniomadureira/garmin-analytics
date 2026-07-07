@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { StatTile } from "@/components/ui/stat-tile";
 import { ActivitySeriesChart, type DetailSeriesPoint } from "@/components/dashboard/activity-series-chart";
 import { Gauge, Clock, Zap, Heart, TrendingUp, Mountain, Flame, Footprints } from "lucide-react";
+import type { PrescribedWorkout, WorkoutExecution } from "@/lib/types/coach";
 
 const RouteMap = dynamic(() => import("@/components/dashboard/route-map").then((m) => m.RouteMap), {
   ssr: false,
@@ -23,6 +24,8 @@ interface ActivityDetailFull {
   route: [number, number][];
   series: DetailSeriesPoint[];
   samplesUnavailable: boolean;
+  prescription?: PrescribedWorkout | null;
+  execution?: WorkoutExecution | null;
 }
 
 function formatHm(totalSeconds: number): string {
@@ -49,6 +52,97 @@ function formatSeconds(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function fmtSecPerKm(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return `${m}:${String(s).padStart(2, "0")}/km`;
+}
+
+function DecouplingBadge({ pct }: { pct: number | null }) {
+  if (pct === null) return null;
+  const { cls, label } =
+    pct < 5
+      ? { cls: "text-emerald-400 border-emerald-800 bg-emerald-950/40", label: "aeróbico estável" }
+      : pct <= 8
+        ? { cls: "text-amber-400 border-amber-800 bg-amber-950/40", label: "deriva moderada" }
+        : { cls: "text-red-400 border-red-800 bg-red-950/40", label: "deriva elevada" };
+  return (
+    <div className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${cls}`}>
+      <span>Decoupling {pct.toFixed(1)}%</span>
+      <span className="opacity-60">· {label}</span>
+    </div>
+  );
+}
+
+function PrescribedVsExecutedCard({
+  prescription,
+  execution,
+}: {
+  prescription: PrescribedWorkout | null | undefined;
+  execution: WorkoutExecution | null | undefined;
+}) {
+  const hasDecoupling = execution != null && execution.aeroDecouplingPct !== null;
+  if (!hasDecoupling && !prescription) return null;
+
+  const rows: Array<{ label: string; prescribed: string; actual: string; good?: boolean }> = [];
+
+  if (prescription?.mainPace && execution?.avgPaceMinPerKm !== null && execution?.avgPaceMinPerKm) {
+    const targetMidSec =
+      (prescription.mainPace.minSecPerKm + prescription.mainPace.maxSecPerKm) / 2;
+    const actualSec = Math.round(execution.avgPaceMinPerKm * 60);
+    const within =
+      actualSec >= prescription.mainPace.minSecPerKm &&
+      actualSec <= prescription.mainPace.maxSecPerKm;
+    rows.push({
+      label: "Pace médio",
+      prescribed: `${fmtSecPerKm(prescription.mainPace.minSecPerKm)}–${fmtSecPerKm(prescription.mainPace.maxSecPerKm)}`,
+      actual: fmtSecPerKm(actualSec),
+      good: within || Math.abs(actualSec - targetMidSec) < 15,
+    });
+  }
+
+  if (prescription?.totalDurationSec && execution?.durationSec) {
+    const deltMin = Math.round((execution.durationSec - prescription.totalDurationSec) / 60);
+    rows.push({
+      label: "Duração",
+      prescribed: `${Math.round(prescription.totalDurationSec / 60)}min`,
+      actual: `${Math.round(execution.durationSec / 60)}min`,
+      good: Math.abs(deltMin) <= 5,
+    });
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-3 space-y-2.5">
+      <div className="flex items-center justify-between">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {prescription ? `Análise · ${prescription.name}` : "Análise do Treino"}
+        </h4>
+        {execution && <DecouplingBadge pct={execution.aeroDecouplingPct} />}
+      </div>
+
+      {rows.length > 0 && (
+        <div className="grid grid-cols-3 gap-x-2 text-xs text-slate-500">
+          <span />
+          <span className="text-center">Prescrito</span>
+          <span className="text-center">Executado</span>
+          {rows.map((r) => (
+            <>
+              <span key={`${r.label}-l`} className="text-slate-500">{r.label}</span>
+              <span key={`${r.label}-p`} className="text-center text-slate-400">{r.prescribed}</span>
+              <span
+                key={`${r.label}-a`}
+                className={`text-center font-medium ${r.good ? "text-emerald-400" : "text-amber-400"}`}
+              >
+                {r.actual}
+              </span>
+            </>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface HrZone {
@@ -132,6 +226,8 @@ export function ActivityDetailPanel({ date }: { date: string }) {
         <StatTile icon={<Mountain size={14} />} label="Elevação" value={data.elevationGainM !== null ? Math.round(data.elevationGainM) : null} unit="m" sublabel="" accent="#34d399" />
         <StatTile icon={<Flame size={14} />} label="Calorias" value={data.caloriesKcal} unit="kcal" sublabel="" accent="#fb923c" />
       </div>
+
+      <PrescribedVsExecutedCard prescription={data.prescription} execution={data.execution} />
 
       {data.samplesUnavailable ? (
         <p className="rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-3 text-xs text-slate-500">

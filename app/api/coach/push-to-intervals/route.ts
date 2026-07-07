@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pushWorkoutToIntervals } from "@/lib/intervals/client";
+import { parseIcuWorkout, savePrescription } from "@/lib/coach/prescription-store";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,6 +13,10 @@ export async function POST(req: NextRequest) {
       : new Date().toISOString().slice(0, 10);
 
     const result = await pushWorkoutToIntervals({ name, description, dateStr });
+
+    // Guardar prescrição estruturada em Redis (fire-and-forget — não bloqueia resposta)
+    savePrescription(dateStr, parseIcuWorkout(name, description)).catch(() => {});
+
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 502 });

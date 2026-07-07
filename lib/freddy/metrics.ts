@@ -859,8 +859,11 @@ export class FreddyDataService {
    * e deltas vs baseline pessoal (30 dias) para HRV e FC repouso.
    * [Certo] trainingReadiness_recoveryTime vem em SEGUNDOS (confirmado
    * em comentário no topo deste ficheiro — ÷3600 para horas).
+   * [Certo] Extraído de getRecoveryInsights para reaproveitar wellness
+   * já obtido — evita a dupla chamada a getWellnessWeekly(30) que existia
+   * entre getComposedReadiness e getRecoveryInsights no dashboard.
    */
-  async getRecoveryInsights(): Promise<{
+  async getRecoveryInsightsFromWellness(wellness: WellnessDay[]): Promise<{
     recoveryTimeHours: number | null;
     acuteLoad: number | null;
     bodyBatteryMax: number | null;
@@ -876,8 +879,7 @@ export class FreddyDataService {
       days: 10,
     }).catch(() => ({}));
     const batteryP = this.getBodyBatteryWeekly(2).catch(() => []);
-    const wellnessP = this.getWellnessWeekly(30).catch(() => []);
-    const [readiness, battery, wellness] = await Promise.all([readinessP, batteryP, wellnessP]);
+    const [readiness, battery] = await Promise.all([readinessP, batteryP]);
 
     const recoveryRaw = Object.values(readiness as Record<string, { recoveryTime?: number }>)
       .map((v) => v?.recoveryTime ?? null).find((v) => v !== null) ?? null;
@@ -888,7 +890,9 @@ export class FreddyDataService {
 
     const latestBattery = battery.length ? battery[battery.length - 1] : null;
     const latest = wellness.length ? wellness[wellness.length - 1] : null;
-    const { baseline: hrvBaseline } = computeHrvDeviation(wellness);
+    // [Certo] hrv vem de computeHrvDeviation (último COM hrv não-nulo) — alinhado
+    // com getComposedReadinessFromWellness para que card e hero mostrem o mesmo valor.
+    const { hrv: currentHrv, baseline: hrvBaseline } = computeHrvDeviation(wellness);
     const baselineEntries = wellness.slice(0, -1);
     const rhrValues = baselineEntries.filter((w) => w.restingHr !== null);
     const restingHrBaseline = rhrValues.length ? roundTo(rhrValues.reduce((s, w) => s + (w.restingHr ?? 0), 0) / rhrValues.length, 1) : null;
@@ -899,11 +903,16 @@ export class FreddyDataService {
       bodyBatteryMax: latestBattery?.max ?? null,
       bodyBatteryMin: latestBattery?.min ?? null,
       avgStress: latestBattery?.avgStress ? Math.round(latestBattery.avgStress) : null,
-      hrv: latest?.hrv ?? null,
+      hrv: currentHrv,
       hrvBaseline,
       restingHr: latest?.restingHr ?? null,
       restingHrBaseline,
     };
+  }
+
+  async getRecoveryInsights() {
+    const wellness = await this.getWellnessWeekly(30);
+    return this.getRecoveryInsightsFromWellness(wellness);
   }
 
   async getBodyBatteryWeekly(days = 7): Promise<

@@ -3,6 +3,9 @@ import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 import { getAthleteZones } from "@/lib/strava-lab/client";
 import { getTodayWeather, getAirQuality, type GeoHint } from "@/lib/weather/client";
 import { getIcuPaceZones } from "@/lib/intervals/client";
+import { loadRecentWorkoutDates, loadPrescription } from "@/lib/coach/prescription-store";
+import { loadExecution } from "@/lib/coach/execution-analysis";
+import type { PrescribedWorkout, WorkoutExecution } from "@/lib/types/coach";
 
 /**
  * [Certo] Endpoint e modelo confirmados em console.groq.com/docs (2026-06-25):
@@ -16,6 +19,60 @@ const GROQ_MODEL = "llama-3.3-70b-versatile";
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+}
+
+function formatWorkoutHistory(
+  pairs: Array<{
+    date: string;
+    prescribed: PrescribedWorkout | null;
+    executed: WorkoutExecution | null;
+  }>,
+): string {
+  const lines = pairs
+    .filter((p) => p.prescribed || p.executed)
+    .map(({ date, prescribed, executed }) => {
+      const parts: string[] = [date];
+      if (prescribed) parts.push(`"${prescribed.name}"`);
+
+      const preParts: string[] = [];
+      if (prescribed?.totalDurationSec)
+        preParts.push(`${Math.round(prescribed.totalDurationSec / 60)}min`);
+      if (prescribed?.mainPace)
+        preParts.push(
+          `alvo ${secPerKmToMinSec(prescribed.mainPace.minSecPerKm)}-${secPerKmToMinSec(prescribed.mainPace.maxSecPerKm)}/km`,
+        );
+      if (preParts.length) parts.push(`prescrito: ${preParts.join(" + ")}`);
+
+      if (executed) {
+        const execParts: string[] = [
+          `executado ${executed.distanceKm.toFixed(1)}km em ${Math.round(executed.durationSec / 60)}min`,
+        ];
+        if (executed.avgPaceMinPerKm !== null)
+          execParts.push(`pace ${secPerKmToMinSec(Math.round(executed.avgPaceMinPerKm * 60))}/km`);
+        if (executed.avgHrBpm !== null)
+          execParts.push(`FC ${Math.round(executed.avgHrBpm)}bpm`);
+        if (executed.aeroDecouplingPct !== null) {
+          const badge =
+            executed.aeroDecouplingPct < 5
+              ? "estável"
+              : executed.aeroDecouplingPct <= 8
+                ? "deriva moderada"
+                : "deriva elevada";
+          execParts.push(`decoupling ${executed.aeroDecouplingPct.toFixed(1)}% (${badge})`);
+        }
+        if (executed.paceVsTargetSecPerKm !== null) {
+          const sign = executed.paceVsTargetSecPerKm >= 0 ? "+" : "";
+          execParts.push(`pace ${sign}${executed.paceVsTargetSecPerKm}s/km vs alvo`);
+        }
+        parts.push(execParts.join(", "));
+      } else {
+        parts.push("sem execução registada");
+      }
+      return parts.join(" — ");
+    });
+
+  if (!lines.length) return "";
+  return `[HISTÓRICO PRESCRITO/EXECUTADO — menciona o treino anterior ao prescrever hoje]:\n${lines.join("\n")}`;
 }
 
 function secPerKmToMinSec(s: number): string {
@@ -51,8 +108,8 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
     service.getTrainingReadiness(10).catch(() => []),
     service.getWellnessWeekly(30).catch(() => []),
   ]);
-  await new Promise((r) => setTimeout(r, 250));
-  const [loadEntries, running, composed, zones, todayActivities, weather, aq, paceZones] = await Promise.all([
+  // [Certo] setTimeout(250) removido — redundante com semáforo em lib/freddy/limiter.ts
+  const [loadEntries, running, composed, zones, todayActivities, weather, aq, paceZones, recentDates] = await Promise.all([
     service.getTrainingLoadSummary(7).catch(() => []),
     service.getWeeklyRunningSummary(7).catch(() => null),
     service.getComposedReadinessFromWellness(wellness).catch(() => null),
@@ -65,7 +122,24 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
     // AQ e pace zones: APIs externas, nunca bloqueiam o coach se falharem
     (geo?.lat && geo?.lon ? getAirQuality(geo.lat, geo.lon) : Promise.resolve(null)).catch(() => null),
     getIcuPaceZones().catch(() => null),
+    // Redis — sem rate limit, corre em paralelo com os pedidos Freddy
+    loadRecentWorkoutDates(3).catch((): string[] => []),
   ]);
+
+  // Carrega pares prescrição/execução (Redis, rápido)
+  const workoutHistory: Array<{
+    date: string;
+    prescribed: PrescribedWorkout | null;
+    executed: WorkoutExecution | null;
+  }> = recentDates.length > 0
+    ? await Promise.all(
+        recentDates.map(async (date) => ({
+          date,
+          prescribed: await loadPrescription(date).catch(() => null),
+          executed: await loadExecution(date).catch(() => null),
+        })),
+      )
+    : [];
   const latestReadiness = readinessEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), readinessEntries[0]);
   const latestLoad = loadEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), loadEntries[0]);
   const latestWellness = wellness[wellness.length - 1];
@@ -113,6 +187,7 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
       } Se o utilizador pergunta "que treino posso fazer hoje" DEPOIS de já ter treinado, reconhece isso explicitamente e adapta a recomendação (ex: recuperação activa, descanso, ou segundo treino leve se o TSB o permitir).`;
     })(),
     running ? `Volume últimos 7 dias (summarized, pode não incluir hoje): ${running.totalDistanceKm} km em ${running.runCount} corridas.` : "Sem dados de volume semanal.",
+    formatWorkoutHistory(workoutHistory),
   ]
     .filter(Boolean)
     .join("\n");
