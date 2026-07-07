@@ -3,10 +3,9 @@ export const maxDuration = 60;
 
 import { humanizeError } from "@/lib/utils/error-message";
 import { DashboardNav } from "@/components/dashboard/nav";
-import { ReadinessCard, type ReadinessCardData } from "@/components/dashboard/readiness-card";
+import type { ReadinessCardData, RecoveryCardData } from "@/lib/types/readiness";
 import { TrainingLoadCard, type TrainingLoadCardData } from "@/components/dashboard/training-load-card";
 import { RunningSummaryCard, type RunningSummaryCardData } from "@/components/dashboard/running-summary-card";
-import { RecoveryCard, type RecoveryCardData } from "@/components/dashboard/recovery-card";
 import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
 import { ReadinessHero } from "@/components/dashboard/readiness-hero";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";

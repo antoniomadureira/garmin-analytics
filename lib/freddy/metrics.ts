@@ -552,7 +552,7 @@ export class FreddyDataService {
     let distanceM = extractValuesByDate(recentText, RunActivityMetrics.distanceM).get(date)?.[0] ?? 0;
     let durationSec = extractValuesByDate(recentText, RunActivityMetrics.durationSec).get(date)?.[0] ?? 0;
     let avgHr = extractValuesByDate(recentText, RunActivityMetrics.avgHr).get(date)?.[0] ?? null;
-    let maxHr = extractValuesByDate(recentText, RunActivityMetrics.maxHr).get(date)?.[0] ?? null;
+    const maxHr = extractValuesByDate(recentText, RunActivityMetrics.maxHr).get(date)?.[0] ?? null;
     let elevationGainM = extractValuesByDate(recentText, RunActivityMetrics.elevationGainM).get(date)?.[0] ?? null;
     let caloriesKcal = extractValuesByDate(recentText, RunActivityMetrics.activeKcal).get(date)?.[0] ?? null;
 

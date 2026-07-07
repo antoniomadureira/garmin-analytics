@@ -1,8 +1,7 @@
 "use client";
 
-import type { ReadinessCardData } from "@/components/dashboard/readiness-card";
+import type { ReadinessCardData, RecoveryCardData } from "@/lib/types/readiness";
 import type { TrainingLoadCardData } from "@/components/dashboard/training-load-card";
-import type { RecoveryCardData } from "@/components/dashboard/recovery-card";
 import { computeHrvDeltaPct } from "@/lib/utils/hrv";
 import {
   type SignalSeverity,

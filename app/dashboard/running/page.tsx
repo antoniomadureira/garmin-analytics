@@ -96,7 +96,7 @@ function stravaActivitiesToStats(activities: StravaLabActivity[]): RunningStatsD
   const weeklyVolume = [...weeklyMap.entries()]
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .slice(-18)
-    .map(([wk, km], i) => ({ weekLabel: `S${i + 1}`, km: roundTo(km, 1) }));
+    .map(([_wk, km], i) => ({ weekLabel: `S${i + 1}`, km: roundTo(km, 1) }));
   const avgWeekKm = weeklyVolume.length ? roundTo(weeklyVolume.reduce((s, w) => s + w.km, 0) / weeklyVolume.length, 1) : 0;
   const bestWeekKm = weeklyVolume.length ? Math.max(...weeklyVolume.map((w) => w.km)) : 0;
 
