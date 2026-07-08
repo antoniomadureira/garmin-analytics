@@ -6,7 +6,7 @@ import { getIcuPaceZones } from "@/lib/intervals/client";
 import { loadRecentWorkoutDates, loadPrescription } from "@/lib/coach/prescription-store";
 import { loadExecution } from "@/lib/coach/execution-analysis";
 import type { PrescribedWorkout, WorkoutExecution } from "@/lib/types/coach";
-import { getPreviousDayWellness } from "@/lib/utils/wellness";
+import { getDecisionWellness } from "@/lib/utils/wellness";
 
 /**
  * [Certo] Endpoint e modelo confirmados em console.groq.com/docs (2026-06-25):
@@ -144,14 +144,14 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
   const latestReadiness = readinessEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), readinessEntries[0]);
   const latestLoad = loadEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), loadEntries[0]);
   const todayStr = new Date().toISOString().slice(0, 10);
-  const latestWellness = getPreviousDayWellness(wellness, todayStr);
+  const latestWellness = getDecisionWellness(wellness, todayStr);
   const staleDays = latestReadiness
     ? Math.round((new Date(todayStr).getTime() - new Date(latestReadiness.date).getTime()) / 86400000)
     : 0;
 
   return [
     composed && composed.compositeScore !== null
-      ? `[FONTE PRINCIPAL para "estou apto a treinar hoje", composto próprio de sinais frescos de hoje]: Score composto ${composed.compositeScore}/100. Recomendação base: "${composed.recommendation}". Sinais individuais: ${composed.signals.map((s) => `${s.label}: ${s.detail} (${s.status})`).join("; ")}. Este composto é uma média simples e transparente de sinais frescos (TSB, HRV, FC repouso, sono, stress) — NÃO é o algoritmo oficial do Garmin, é a tua melhor aproximação dada a indisponibilidade do Training Readiness real. Usa isto como base principal da resposta, explica os sinais que mais pesaram, e dá uma recomendação concreta de tipo de treino (fácil/moderado/séries/descanso).`
+      ? `[FONTE PRINCIPAL para "estou apto a treinar hoje", composto próprio de sinais frescos${composed.wellnessDate ? ` de ${composed.wellnessDate}` : ""}]: Score composto ${composed.compositeScore}/100. Recomendação base: "${composed.recommendation}". Sinais individuais: ${composed.signals.map((s) => `${s.label}: ${s.detail} (${s.status})`).join("; ")}. Este composto é uma média simples e transparente de sinais frescos (TSB, HRV, FC repouso, sono, stress) — NÃO é o algoritmo oficial do Garmin, é a tua melhor aproximação dada a indisponibilidade do Training Readiness real. Usa isto como base principal da resposta, explica os sinais que mais pesaram, e dá uma recomendação concreta de tipo de treino (fácil/moderado/séries/descanso).`
       : "Sem sinais frescos suficientes para um composto de readiness (Intervals.icu pode estar indisponível neste momento).",
     latestWellness
       ? `[Intervals.icu, dados de ${latestWellness.date} (ontem), carga de treino]: CTL (fitness) ${latestWellness.ctl}, ATL (fadiga) ${latestWellness.atl}, TSB ${latestWellness.tsb}.`
@@ -215,17 +215,17 @@ Imediatamente a seguir ao Markdown, adiciona exactamente este separador e bloco:
 Usa EXACTAMENTE esta sintaxe de texto do Intervals.icu (o servidor faz o parse e cria passos estruturados):
 
 Warmup
-- 15m 65-70% HR
+- 15min 65-70% HR
 
 6x
 - 800mtr 3:50-4:00/km Pace
-- 2m Z1
+- 2min Z1
 
 Cooldown
-- 10m 60-65% HR
+- 10min 60-65% HR
 
 Regras obrigatórias:
-- "m" significa minutos, NUNCA metros. Usa "mtr" ou "km" para distâncias (ex: 800mtr, 1.6km).
+- Durações SEMPRE com sufixo "min" (ex: 15min, 90min). Distâncias SEMPRE "mtr" ou "km" (ex: 800mtr, 1.6km). O sufixo "m" sozinho é PROIBIDO em qualquer contexto.
 - Pace no formato MM:SS/km (ex: 3:50-4:00/km Pace). Quando o contexto incluir pace zones do atleta, usa pace como target em cada passo de corrida (ex: 1km 4:30-4:40/km Pace); quando não houver pace zones, usa % HR ou zonas Z1-Z5.
 - Zonas: Z1, Z2, Z3, Z4, Z5 ou percentagem HR (ex: 70-80% HR). Usa as zonas reais do atleta se fornecidas. Pace zones têm prioridade sobre zonas de HR para blocos de corrida.
 - Repetições: número seguido de "x" numa linha própria, depois os passos indentados com "- ".

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { X } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Drawer } from "vaul";
 
 export function BottomSheet({
   open,
@@ -14,52 +14,51 @@ export function BottomSheet({
   title: string;
   children: React.ReactNode;
 }) {
-  // Bloqueia o scroll do body enquanto o painel está aberto.
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Em controlled mode, vaul só chama onOpenChange(false) — o (true) nunca
+  // dispara porque open vem de fora. useEffect é o lugar correcto.
+  // preventScroll evita que o browser faça scroll até ao elemento fora de vista
+  // durante a animação de entrada.
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = "";
-      };
-    }
+    if (open) contentRef.current?.focus({ preventScroll: true });
   }, [open]);
 
   return (
-    <>
-      {/* Fundo escurecido — clicar fecha */}
-      <div
-        onClick={onClose}
-        className={`fixed inset-0 z-40 bg-black/60 ${open ? "" : "pointer-events-none"}`}
-        style={{ transition: "opacity 300ms ease-out", opacity: open ? 1 : 0 }}
-      />
+    <Drawer.Root open={open} onOpenChange={(o) => !o && onClose()}>
+      <Drawer.Portal>
+        {/* Overlay com fade — clicar fecha (built-in do vaul) */}
+        <Drawer.Overlay className="fixed inset-0 z-40 bg-black/60 transition-opacity duration-300" />
 
-      {/* Painel — desliza de baixo para cima */}
-      <div
-        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[88vh] flex-col overflow-hidden rounded-t-2xl border-t border-slate-800 bg-slate-950 shadow-2xl"
-        style={{
-          transition: "transform 350ms cubic-bezier(0.32, 0.72, 0, 1)",
-          transform: open ? "translateY(0)" : "translateY(100%)",
-        }}
-        role="dialog"
-        aria-modal="true"
-      >
-        {/* Pega visual de arrasto, sinaliza que o painel é deslizável/scrollável */}
-        <div className="flex justify-center pt-2">
-          <div className="h-1 w-10 rounded-full bg-slate-700" />
-        </div>
-        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-          <h3 className="text-sm font-medium text-slate-200">{title}</h3>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-100">
-            <X size={18} />
-          </button>
-        </div>
-        <div
-          className="overflow-y-auto px-4 py-4"
-          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)", WebkitOverflowScrolling: "touch" }}
+        {/* Painel — arrasto para fechar via vaul; Portal rende em document.body
+            (resolve o problema de backdrop-filter em antepassados, mesmo que os
+            consumidores continuem a colocar BottomSheet fora de elementos com filter) */}
+        <Drawer.Content
+          ref={contentRef}
+          tabIndex={-1}
+          aria-describedby={undefined}
+          className="fixed inset-x-0 bottom-0 z-50 flex max-h-[90dvh] flex-col rounded-t-2xl border-t border-slate-800 bg-slate-900 shadow-2xl outline-none"
         >
-          {children}
-        </div>
-      </div>
-    </>
+          {/* Handle de arrasto */}
+          <div className="mx-auto mt-2 mb-1 h-1 w-10 flex-shrink-0 rounded-full bg-slate-700" />
+
+          {/* Título — alinhado ao padding do conteúdo; sem X (fecha por drag ou overlay) */}
+          <Drawer.Title className="flex-shrink-0 border-b border-slate-800 px-4 py-3 text-sm font-medium text-slate-200">
+            {title}
+          </Drawer.Title>
+
+          {/* Área com scroll */}
+          <div
+            className="overflow-y-auto px-4 py-4"
+            style={{
+              paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
+              WebkitOverflowScrolling: "touch",
+            }}
+          >
+            {children}
+          </div>
+        </Drawer.Content>
+      </Drawer.Portal>
+    </Drawer.Root>
   );
 }

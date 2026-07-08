@@ -24,6 +24,10 @@ export interface PrescribedWorkout {
   totalDurationSec: number | null;
   /** Alvo de pace da secção principal (1ª passo com pace explícito) */
   mainPace: { minSecPerKm: number; maxSecPerKm: number } | null;
+  /** Bloco ICU_WORKOUT cru (description original). Guardado em Redis ao lado
+   *  do parseado para que bugs futuros do parser sejam reproduzíveis sem
+   *  depender da memória do utilizador — fixture à distância de um GET. */
+  rawBlock: string;
 }
 
 export interface WorkoutExecution {

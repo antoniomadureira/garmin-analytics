@@ -85,7 +85,8 @@ export function LastWorkoutCard({ date }: { date: string }) {
         onClose={() => setOpen(false)}
         title={`Corrida · ${label}`}
       >
-        <ActivityDetailPanel date={date} />
+        {/* data já está em memória — o painel abre sem fetch extra */}
+        <ActivityDetailPanel date={date} initialData={data} />
       </BottomSheet>
     </>
   );

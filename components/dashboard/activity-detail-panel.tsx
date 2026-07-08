@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { StatTile } from "@/components/ui/stat-tile";
 import { ActivitySeriesChart, type DetailSeriesPoint } from "@/components/dashboard/activity-series-chart";
 import { Gauge, Clock, Zap, Heart, TrendingUp, Mountain, Flame, Footprints } from "lucide-react";
 import type { PrescribedWorkout, WorkoutExecution } from "@/lib/types/coach";
+import { needsFreddyFetch } from "@/lib/utils/activity-detail";
 
 const RouteMap = dynamic(() => import("@/components/dashboard/route-map").then((m) => m.RouteMap), {
   ssr: false,
@@ -128,16 +129,13 @@ export function PrescribedVsExecutedCard({
           <span className="text-center">Prescrito</span>
           <span className="text-center">Executado</span>
           {rows.map((r) => (
-            <>
-              <span key={`${r.label}-l`} className="text-slate-500">{r.label}</span>
-              <span key={`${r.label}-p`} className="text-center text-slate-400">{r.prescribed}</span>
-              <span
-                key={`${r.label}-a`}
-                className={`text-center font-medium ${r.good ? "text-emerald-400" : "text-amber-400"}`}
-              >
+            <Fragment key={r.label}>
+              <span className="text-slate-500">{r.label}</span>
+              <span className="text-center text-slate-400">{r.prescribed}</span>
+              <span className={`text-center font-medium ${r.good ? "text-emerald-400" : "text-amber-400"}`}>
                 {r.actual}
               </span>
-            </>
+            </Fragment>
           ))}
         </div>
       )}
@@ -151,11 +149,20 @@ interface HrZone {
   max: number;
 }
 
-export function ActivityDetailPanel({ date }: { date: string }) {
-  const [data, setData] = useState<ActivityDetailFull | null>(null);
+export function ActivityDetailPanel({
+  date,
+  initialData,
+}: {
+  date: string;
+  initialData?: ActivityDetailFull;
+}) {
+  const [data, setData] = useState<ActivityDetailFull | null>(initialData ?? null);
   const [error, setError] = useState<string | null>(null);
   const [strava, setStrava] = useState<StravaDetail | null>(null);
   const [zones, setZones] = useState<HrZone[] | null>(null);
+  // richFetching: true enquanto aguardamos o fetch Freddy para series/route.
+  // Começa true se precisarmos de fetch (sem initialData ou initialData parcial).
+  const [richFetching, setRichFetching] = useState(() => needsFreddyFetch(initialData));
 
   useEffect(() => {
     let cancelled = false;
@@ -170,14 +177,23 @@ export function ActivityDetailPanel({ date }: { date: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/freddy/activity-detail?date=${date}`)
-      .then((res) => res.json())
-      .then((json) => {
-        if (cancelled) return;
-        if (json.error) setError(json.error);
-        else setData(json);
-      })
-      .catch((err) => !cancelled && setError(String(err)));
+
+    // Progressive enhancement: usa initialData para render imediato dos stats.
+    // Só re-fetcha o Freddy se initialData estiver ausente ou parcial (sem series).
+    // Omitir initialData das deps é intencional — é estável após mount e a
+    // lógica de fetch só precisa de correr uma vez por `date`.
+    if (needsFreddyFetch(initialData)) {
+      setRichFetching(true);
+      fetch(`/api/freddy/activity-detail?date=${date}`)
+        .then((res) => res.json())
+        .then((json) => {
+          if (cancelled) return;
+          if (json.error) { if (!initialData) setError(json.error); }
+          else setData(json);
+        })
+        .catch((err) => { if (!cancelled && !initialData) setError(String(err)); })
+        .finally(() => { if (!cancelled) setRichFetching(false); });
+    }
 
     // [Certo] Pedido separado e silencioso ao strava-lab (app externa,
     // já validada) — se não encontrar correspondência por data, esta
@@ -190,6 +206,7 @@ export function ActivityDetailPanel({ date }: { date: string }) {
     return () => {
       cancelled = true;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
   if (error) {
@@ -229,7 +246,9 @@ export function ActivityDetailPanel({ date }: { date: string }) {
 
       <PrescribedVsExecutedCard prescription={data.prescription} execution={data.execution} />
 
-      {data.samplesUnavailable ? (
+      {richFetching ? (
+        <div className="h-64 animate-pulse rounded-xl bg-slate-900/50" />
+      ) : data.samplesUnavailable ? (
         <p className="rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-3 text-xs text-slate-500">
           Sem dados detalhados (mapa, FC/altitude/pace ao segundo) para esta corrida — só ficam disponíveis para
           atividades dos últimos ~35 dias. As estatísticas acima (distância, tempo, FC média, etc.) continuam corretas.
@@ -294,7 +313,7 @@ export function ActivityDetailPanel({ date }: { date: string }) {
           )}
         </div>
       )}
-      {zones && zones.length > 0 && data.series.length > 0 && !data.samplesUnavailable && (
+      {!richFetching && zones && zones.length > 0 && data.series.length > 0 && !data.samplesUnavailable && (
         <div className="border-t border-slate-800 pt-3">
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Tempo em Zona (FC)</h4>
           {(() => {
@@ -320,7 +339,10 @@ export function ActivityDetailPanel({ date }: { date: string }) {
                         style={{ width: `${(counts[i] / total) * 100}%`, backgroundColor: ["#34d399", "#22d3ee", "#fbbf24", "#fb923c", "#f87171"][i] || "#94a3b8" }}
                       />
                     </div>
-                    <span className="w-12 text-right text-slate-400">{formatHm(counts[i])}</span>
+                    <span className="w-16 text-right text-slate-400">
+                      {formatHm(counts[i])}
+                      <span className="ml-1 text-slate-500 text-[10px]">· {Math.round((counts[i] / total) * 100)}%</span>
+                    </span>
                   </div>
                 ))}
               </div>

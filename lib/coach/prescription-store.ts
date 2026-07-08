@@ -11,15 +11,32 @@ function parseStep(line: string): PrescribedStep {
   const text = line.replace(/^-\s*/, "").trim();
   const step: PrescribedStep = { label: text };
 
-  // Distância — tem de ser antes de "m" para não capturar "km" como "k" + minutos
+  // "m" bare (não seguido de "in"→"min" nem "tr"→"mtr"); \b garante que "/km" não dispara.
+  // Sufixo "m" é ambíguo: valores >50 são invariavelmente metros em contexto de corrida
+  // (ninguém prescreve blocos de 51 minutos com sufixo "m"); valores ≤50 são minutos.
+  const bareMMatch = text.match(/\b(\d+)\s*m\b/);
+  const bareMVal = bareMMatch ? parseInt(bareMMatch[1]) : null;
+
+  // ── Distância ──────────────────────────────────────────────────────────────
   const kmMatch = text.match(/\b(\d+(?:\.\d+)?)\s*km\b/);
   const mtrMatch = text.match(/\b(\d+(?:\.\d+)?)\s*mtr\b/);
-  if (kmMatch) step.distanceM = parseFloat(kmMatch[1]) * 1000;
-  else if (mtrMatch) step.distanceM = parseFloat(mtrMatch[1]);
+  if (kmMatch) {
+    step.distanceM = parseFloat(kmMatch[1]) * 1000;
+  } else if (mtrMatch) {
+    step.distanceM = parseFloat(mtrMatch[1]);
+  } else if (bareMVal !== null && bareMVal > 50) {
+    console.warn(`[parseStep] "${bareMVal}m" interpretado como distância (metros). Se for tempo usa "${bareMVal}min".`);
+    step.distanceM = bareMVal;
+  }
 
-  // Duração — "m" ou "min" NÃO seguido de "tr" (evita "mtr")
-  const durMatch = text.match(/\b(\d+)\s*m(?:in)?\b(?!tr)/);
-  if (durMatch) step.durationSec = parseInt(durMatch[1]) * 60;
+  // ── Duração ────────────────────────────────────────────────────────────────
+  // "min" é inequívoco. Bare "m" ≤50: convenção para blocos curtos ("2m Z1", "15m").
+  const minMatch = text.match(/\b(\d+)\s*min\b/);
+  if (minMatch) {
+    step.durationSec = parseInt(minMatch[1]) * 60;
+  } else if (bareMVal !== null && bareMVal <= 50) {
+    step.durationSec = bareMVal * 60;
+  }
 
   // Pace — M:SS-M:SS/km Pace
   const paceMatch = text.match(/\b(\d+):(\d+)-(\d+):(\d+)\/km\s+Pace/i);
@@ -93,6 +110,7 @@ export function parseIcuWorkout(name: string, description: string): PrescribedWo
     sections,
     totalDurationSec: totalDurationSec > 0 ? totalDurationSec : null,
     mainPace,
+    rawBlock: description,
   };
 }
 

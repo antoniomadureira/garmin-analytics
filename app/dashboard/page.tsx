@@ -11,6 +11,7 @@ import { IntensityDistributionChart } from "@/components/dashboard/intensity-dis
 import type { WeeklyIntensityData } from "@/lib/analysis/intensity-distribution";
 import { LastWorkoutCard } from "@/components/dashboard/last-workout-card";
 import { getLastActivityDate } from "@/lib/utils/activity";
+import { getDecisionWellness } from "@/lib/utils/wellness";
 import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
 import { ReadinessHero } from "@/components/dashboard/readiness-hero";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
@@ -154,7 +155,8 @@ async function loadTrainingLoad(service: Awaited<ReturnType<typeof getFreddyData
     ]);
     const load = loadEntries.reduce((best, cur) => (!best || cur.date > best.date ? cur : best), loadEntries[0]);
     const vo2 = vo2Entries.reduce((best, cur) => (!best || cur.date > best.date ? cur : best), vo2Entries[0]);
-    const latestWellness = wellness[wellness.length - 1]; // já vem ordenado por data ascendente
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const latestWellness = getDecisionWellness(wellness, todayStr);
     if (!latestWellness) throw new Error("Sem registo de wellness (Intervals.icu) no período pedido.");
 
     return {

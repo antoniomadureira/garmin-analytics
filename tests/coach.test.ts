@@ -1,4 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 vi.mock("@/lib/redis");
 vi.mock("@/lib/freddy/client", () => ({ getFreddyClient: vi.fn() }));
@@ -90,6 +92,95 @@ describe("parseIcuWorkout — ICU workout parsing", () => {
     expect(w.sections).toHaveLength(0);
     expect(w.mainPace).toBeNull();
     expect(w.totalDurationSec).toBeNull();
+  });
+
+  it("rawBlock preserva a description original intacta", () => {
+    const w = parseIcuWorkout("Intervalos 6x800m", SAMPLE_ICU);
+    expect(w.rawBlock).toBe(SAMPLE_ICU);
+  });
+
+  it("rawBlock é string vazia quando a description está vazia", () => {
+    const w = parseIcuWorkout("Vazio", "");
+    expect(w.rawBlock).toBe("");
+  });
+});
+
+// ─── parseIcuWorkout — regressão: sufixo "m" de metros tratado como minutos ──
+// Fixture sintética: "Limite de Lactato" — 20min aquecimento + 1600m principal +
+// 10min retorno. Com o parser bugado: 1600m → 1600 min → 96000s → total 97800s.
+// Valor confirmado no Redis: coach:prescribed:2026-07-08 totalDurationSec=97800.
+
+const FIXTURE_LACTATO = readFileSync(
+  resolve(process.cwd(), "tests/fixtures-synthetic/icu-workout-limite-lactato.txt"),
+  "utf8",
+);
+
+describe("parseIcuWorkout — bug regressão: 'm' de metros ≠ 'm' de minutos", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  it("totalDurationSec soma apenas steps de TEMPO — 20min + 10min = 1800s", () => {
+    // antes do fix: 97800s (20min + 1600 tratado como minutos + 10min)
+    const w = parseIcuWorkout("Limite de Lactato", FIXTURE_LACTATO);
+    expect(w.totalDurationSec).toBe(1800);
+  });
+
+  it("step '1600m' reconhecido como distância (distanceM=1600), sem durationSec", () => {
+    const w = parseIcuWorkout("Limite de Lactato", FIXTURE_LACTATO);
+    const main = w.sections.find((s) => s.name === "Principal");
+    const step = main?.steps[0];
+    expect(step?.distanceM).toBe(1600);
+    expect(step?.durationSec).toBeUndefined();
+  });
+
+  it("mainPace 4:00-4:30/km extraído da secção de distância (minSecPerKm=240, max=270)", () => {
+    const w = parseIcuWorkout("Limite de Lactato", FIXTURE_LACTATO);
+    expect(w.mainPace).toEqual({ minSecPerKm: 240, maxSecPerKm: 270 });
+  });
+
+  it("steps de tempo com 'min' explícito continuam corretos (20min→1200s, 10min→600s)", () => {
+    const w = parseIcuWorkout("Limite de Lactato", FIXTURE_LACTATO);
+    const aquecimento = w.sections.find((s) => s.name === "Aquecimento");
+    const retorno = w.sections.find((s) => s.name === "Retorno à calma");
+    expect(aquecimento?.steps[0].durationSec).toBe(1200);
+    expect(retorno?.steps[0].durationSec).toBe(600);
+  });
+
+  it("steps de tempo curtos com 'm' bare ≤50 não regridem (SAMPLE_ICU intacto)", () => {
+    // garante que "15m", "2m", "10m" do SAMPLE_ICU ainda são tratados como minutos
+    const w = parseIcuWorkout("Intervalos 6x800m", SAMPLE_ICU);
+    expect(w.totalDurationSec).toBe(2220); // já coberto noutro teste; repete aqui para isolar
+  });
+});
+
+// ─── parseIcuWorkout — detector de formato proibido ("m" bare) ───────────────
+// "m" sozinho é agora PROIBIDO no system prompt. O parser ainda aceita m>50
+// como metros (safety-net), mas loga console.warn — esse warning é o sinal de
+// que o modelo regressou ao formato antigo e a prescrição precisa de revisão.
+
+describe("parseIcuWorkout — detector de formato proibido ('m' bare)", () => {
+  it("'60m' (m>50, formato proibido) → distanceM=60 e console.warn disparado", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    warn.mockClear(); // vitest reutiliza o mesmo spy; limpar chamadas acumuladas de testes anteriores
+    const w = parseIcuWorkout("Detector", "Main\n- 60m 4:00/km");
+    const step = w.sections[0]?.steps[0];
+    expect(step?.distanceM).toBe(60);
+    expect(step?.durationSec).toBeUndefined();
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("60m"));
+    warn.mockRestore();
+  });
+
+  it("'15m' (m≤50, tolerado como tempo) → durationSec=900 SEM warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    warn.mockClear(); // limpa chamadas acumuladas de testes anteriores (sem clearMocks na config)
+    const w = parseIcuWorkout("Detector", "Main\n- 15m Z1");
+    const step = w.sections[0]?.steps[0];
+    expect(step?.durationSec).toBe(900);
+    expect(step?.distanceM).toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
 

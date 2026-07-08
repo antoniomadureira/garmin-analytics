@@ -76,7 +76,7 @@
 
 import { kv } from "@/lib/redis";
 import { formatHrvDeltaPct, computeHrvDeviation } from "@/lib/utils/hrv";
-import { getPreviousDayWellness } from "@/lib/utils/wellness";
+import { getDecisionWellness } from "@/lib/utils/wellness";
 import { aggregateIntensity, type WeeklyIntensityData } from "@/lib/analysis/intensity-distribution";
 
 // -----------------------------------------------------------------------------
@@ -751,9 +751,11 @@ export class FreddyDataService {
     recommendation: string;
     level: "green" | "yellow" | "red" | "unknown";
     signals: { label: string; status: "bom" | "ok" | "atencao"; detail: string; subScore: number | null }[];
+    /** Data do entry de wellness usado para os sinais (TSB, HRV, sono, FC). Exposto para diagnóstico. */
+    wellnessDate: string | null;
   }> {
     const battery = await this.getBodyBatteryWeekly(3).catch(() => []);
-    const latest = getPreviousDayWellness(wellness);
+    const latest = getDecisionWellness(wellness);
     const latestBattery = battery[battery.length - 1];
     const { hrv: latestHrv, baseline: hrvBaseline, deltaPct: hrvDeltaPct } = computeHrvDeviation(wellness);
     const rhrValues = wellness.map((w) => w.restingHr).filter((v): v is number => v !== null);
@@ -825,7 +827,7 @@ export class FreddyDataService {
       level = "red";
     }
 
-    return { compositeScore, recommendation, level, signals };
+    return { compositeScore, recommendation, level, signals, wellnessDate: latest?.date ?? null };
   }
 
   async getWellnessWeekly(days = 7): Promise<WellnessDay[]> {
@@ -891,11 +893,14 @@ export class FreddyDataService {
       .map((v) => v?.acuteLoad ?? null).find((v) => v !== null) ?? null) as number | null;
 
     const latestBattery = battery.length ? battery[battery.length - 1] : null;
-    const latest = wellness.length ? wellness[wellness.length - 1] : null;
+    const latest = getDecisionWellness(wellness) ?? null;
     // [Certo] hrv vem de computeHrvDeviation (último COM hrv não-nulo) — alinhado
     // com getComposedReadinessFromWellness para que card e hero mostrem o mesmo valor.
     const { hrv: currentHrv, baseline: hrvBaseline } = computeHrvDeviation(wellness);
-    const baselineEntries = wellness.slice(0, -1);
+    // baselineEntries: entradas estritamente antes de latest (exclui ontem e hoje).
+    // Com wellness[last] como latest, slice(0,-1) excluía hoje mas deixava ontem
+    // na baseline — o mesmo dia seria simultaneamente "actual" e "baseline". Corrigido.
+    const baselineEntries = latest ? wellness.filter((w) => w.date < latest.date) : wellness.slice(0, -1);
     const rhrValues = baselineEntries.filter((w) => w.restingHr !== null);
     const restingHrBaseline = rhrValues.length ? roundTo(rhrValues.reduce((s, w) => s + (w.restingHr ?? 0), 0) / rhrValues.length, 1) : null;
 
