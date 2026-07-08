@@ -12,7 +12,7 @@ const RouteMap = dynamic(() => import("@/components/dashboard/route-map").then((
   loading: () => <div className="h-64 animate-pulse rounded-xl bg-slate-900/50" />,
 });
 
-interface ActivityDetailFull {
+export interface ActivityDetailFull {
   date: string;
   distanceKm: number;
   durationSec: number;
@@ -54,13 +54,13 @@ function formatSeconds(sec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function fmtSecPerKm(sec: number): string {
+export function fmtSecPerKm(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);
   return `${m}:${String(s).padStart(2, "0")}/km`;
 }
 
-function DecouplingBadge({ pct }: { pct: number | null }) {
+export function DecouplingBadge({ pct }: { pct: number | null }) {
   if (pct === null) return null;
   const { cls, label } =
     pct < 5
@@ -76,7 +76,7 @@ function DecouplingBadge({ pct }: { pct: number | null }) {
   );
 }
 
-function PrescribedVsExecutedCard({
+export function PrescribedVsExecutedCard({
   prescription,
   execution,
 }: {

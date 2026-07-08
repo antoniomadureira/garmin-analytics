@@ -76,6 +76,8 @@
 
 import { kv } from "@/lib/redis";
 import { formatHrvDeltaPct, computeHrvDeviation } from "@/lib/utils/hrv";
+import { getPreviousDayWellness } from "@/lib/utils/wellness";
+import { aggregateIntensity, type WeeklyIntensityData } from "@/lib/analysis/intensity-distribution";
 
 // -----------------------------------------------------------------------------
 // 1. CONST OBJECTS DE METRIC NAMES (agrupados por domínio funcional)
@@ -751,7 +753,7 @@ export class FreddyDataService {
     signals: { label: string; status: "bom" | "ok" | "atencao"; detail: string; subScore: number | null }[];
   }> {
     const battery = await this.getBodyBatteryWeekly(3).catch(() => []);
-    const latest = wellness[wellness.length - 1];
+    const latest = getPreviousDayWellness(wellness);
     const latestBattery = battery[battery.length - 1];
     const { hrv: latestHrv, baseline: hrvBaseline, deltaPct: hrvDeltaPct } = computeHrvDeviation(wellness);
     const rhrValues = wellness.map((w) => w.restingHr).filter((v): v is number => v !== null);
@@ -1044,6 +1046,73 @@ export class FreddyDataService {
       minToday: lastDate ? minByDate.get(lastDate)?.[0] ?? (allMinValues.length ? Math.min(...allMinValues) : null) : null,
       daily,
     };
+  }
+
+  /**
+   * Distribuição de intensidade das últimas N semanas.
+   * Fonte: summarizedActivity_hrTimeInZone_0..6 (segundos por zona, Garmin).
+   * [Suposição] Unidade confirmada como segundos — mesmo padrão de nomes
+   * que as restantes summarizedActivity_* (ver CLAUDE.md).
+   * Z0 excluído da agregação (abaixo de Z1 — aquecimento/transição).
+   */
+  async getHrZonesWeekly(weeks = 8): Promise<WeeklyIntensityData[]> {
+    if (!this.client.queryRawText) {
+      throw new Error("Este client não implementa queryRawText — necessário para getHrZonesWeekly.");
+    }
+
+    const getMondayStr = (dateStr: string): string => {
+      const d = new Date(dateStr + "T00:00:00Z");
+      const day = d.getUTCDay(); // 0=Dom
+      const offset = day === 0 ? -6 : 1 - day;
+      d.setUTCDate(d.getUTCDate() + offset);
+      return d.toISOString().slice(0, 10);
+    };
+
+    const weekLabel = (mondayStr: string): string => {
+      const d = new Date(mondayStr + "T00:00:00Z");
+      return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
+    };
+
+    const days = weeks * 7;
+    const text = await this.client.queryRawText({
+      metrics: [...SummarizedActivityMetrics.hrZoneSeconds],
+      days,
+    });
+
+    // Extrai valores por data para cada zona (Map<date, number[]> — vários por dia se houver mais de 1 atividade)
+    const zoneByDate = SummarizedActivityMetrics.hrZoneSeconds.map((metric) =>
+      extractValuesByDate(text, metric),
+    );
+
+    // Agrupa atividades por semana (segunda-feira)
+    const weekMap = new Map<string, Array<{ zoneSeconds: number[] }>>();
+    const allDates = new Set<string>();
+    zoneByDate.forEach((map) => map.forEach((_, d) => allDates.add(d)));
+
+    for (const date of allDates) {
+      const monday = getMondayStr(date);
+      // Cada data pode ter múltiplas atividades — sum dos valores por zona
+      const zoneSeconds = zoneByDate.map((map) => {
+        const vals = map.get(date) ?? [];
+        return vals.reduce((a, b) => a + b, 0);
+      });
+      if (!weekMap.has(monday)) weekMap.set(monday, []);
+      weekMap.get(monday)!.push({ zoneSeconds });
+    }
+
+    // Constrói array das últimas N semanas (mais antiga primeiro)
+    const today = new Date();
+    return Array.from({ length: weeks }, (_, i) => {
+      const d = new Date(today);
+      d.setUTCDate(d.getUTCDate() - (weeks - 1 - i) * 7);
+      const monday = getMondayStr(d.toISOString().slice(0, 10));
+      const activities = weekMap.get(monday) ?? [];
+      return {
+        weekStart: monday,
+        weekLabel: weekLabel(monday),
+        ...aggregateIntensity(activities),
+      };
+    });
   }
 
   async getWeeklyRunningSummary(days = 7): Promise<{

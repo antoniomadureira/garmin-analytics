@@ -7,6 +7,10 @@ import type { ReadinessCardData, RecoveryCardData } from "@/lib/types/readiness"
 import type { WellnessDay } from "@/lib/freddy/metrics";
 import { TrainingLoadCard, type TrainingLoadCardData } from "@/components/dashboard/training-load-card";
 import { RunningSummaryCard, type RunningSummaryCardData } from "@/components/dashboard/running-summary-card";
+import { IntensityDistributionChart } from "@/components/dashboard/intensity-distribution-chart";
+import type { WeeklyIntensityData } from "@/lib/analysis/intensity-distribution";
+import { LastWorkoutCard } from "@/components/dashboard/last-workout-card";
+import { getLastActivityDate } from "@/lib/utils/activity";
 import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
 import { ReadinessHero } from "@/components/dashboard/readiness-hero";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
@@ -239,6 +243,44 @@ async function loadRunningSummary(service: Awaited<ReturnType<typeof getFreddyDa
   }
 }
 
+async function loadLastWorkout(
+  service: Awaited<ReturnType<typeof getFreddyDataService>> | null,
+  connectError?: string,
+): Promise<{ date: string | null; isReal: boolean; error?: string }> {
+  if (!service) return { date: null, isReal: false, error: connectError };
+  try {
+    const summary = await service.getWeeklyRunningSummary(7);
+    return { date: getLastActivityDate(summary.dailyDistanceKm), isReal: true };
+  } catch (err) {
+    return { date: null, isReal: false, error: humanizeError(err) };
+  }
+}
+
+async function loadRunningIntensity(
+  service: Awaited<ReturnType<typeof getFreddyDataService>> | null,
+  connectError?: string,
+): Promise<{ data: WeeklyIntensityData[]; isReal: boolean; error?: string }> {
+  const mock: WeeklyIntensityData[] = Array.from({ length: 8 }, (_, i) => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - (7 - i) * 7);
+    const weekStart = d.toISOString().slice(0, 10);
+    return {
+      weekStart,
+      weekLabel: `${d.getUTCDate()}/${d.getUTCMonth() + 1}`,
+      easySec: 10800, moderateSec: 1800, strongSec: 1200,
+      totalSec: 13800, easyPct: 78.3, moderatePct: 13.0, strongPct: 8.7,
+      lowVolume: false,
+    };
+  });
+  if (!service) return { data: mock, isReal: false, error: connectError };
+  try {
+    const data = await service.getHrZonesWeekly(8);
+    return { data, isReal: true };
+  } catch (err) {
+    return { data: mock, isReal: false, error: humanizeError(err) };
+  }
+}
+
 /**
  * [Suposição] O radar "Estado de Forma" não tem uma única métrica
  * canónica no Freddy — é uma normalização heurística minha a partir de
@@ -314,7 +356,7 @@ export default async function DashboardPage() {
     source: geoSource,
   };
 
-  const [[readinessResult, recoveryResult], trainingLoadResult, yoyResult, runningResult, weatherImpact] = await Promise.all([
+  const [[readinessResult, recoveryResult], trainingLoadResult, yoyResult, runningResult, weatherImpact, intensityResult, lastWorkoutResult] = await Promise.all([
     loadReadinessAndRecovery(service, connectError),
     loadTrainingLoad(service, connectError),
     loadYoyKpis(service, connectError),
@@ -328,6 +370,8 @@ export default async function DashboardPage() {
     ]).then(([w, aq]) =>
       w ? { ...classifyWeatherImpact(w, aq), tempNowC: w.tempNowC, tempMaxC: w.tempMaxC, aqi: aq?.europeanAqi ?? null } : null
     ).catch(() => null),
+    loadRunningIntensity(service, connectError),
+    loadLastWorkout(service, connectError),
   ]);
 
   // Fallback Strava: quando Freddy está completamente indisponível
@@ -364,6 +408,13 @@ export default async function DashboardPage() {
           />
         </section>
 
+        {/* Último treino — prontidão de hoje e resultado de ontem, par de leitura matinal */}
+        {lastWorkoutResult.date && (
+          <section>
+            <LastWorkoutCard date={lastWorkoutResult.date} />
+          </section>
+        )}
+
         {/* Contexto secundário — carga e corrida */}
         <section>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -374,6 +425,14 @@ export default async function DashboardPage() {
               <RunningSummaryCard data={runningResult.data} />
               <div className="flex justify-end"><DataFreshnessDot isReal={runningResult.isReal} error={runningResult.error} /></div>
             </div>
+          </div>
+        </section>
+
+        {/* Distribuição de intensidade semanal (80/20) */}
+        <section>
+          <IntensityDistributionChart data={intensityResult.data} />
+          <div className="flex justify-end mt-1">
+            <DataFreshnessDot isReal={intensityResult.isReal} error={intensityResult.error} />
           </div>
         </section>
 

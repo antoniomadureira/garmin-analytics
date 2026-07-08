@@ -31,6 +31,15 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
 - [Certo] HRV: fonte única computeHrvDeviation (lib/utils/hrv.ts) — "atual" =
   último dia com hrv não-nulo; baseline = média 30d excluindo esse dia.
   Dashboard faz UM fetch de wellness partilhado (loadReadinessAndRecovery).
+- [Certo] TSB/CTL/ATL de decisão (card e coach) vêm do ÚLTIMO dia < hoje
+  (getPreviousDayWellness) — convenção PMC + imuniza contra instabilidade do
+  registo de hoje. Causa exata do sintoma "push altera TSB" não confirmada;
+  hipótese de carga planeada no wellness testada duas vezes, negativa.
+- [Certo] Decoupling só em execução CONTÍNUA (isPaceContinuous, CV<0.15) —
+  em todos os ramos, com ou sem prescrição. Intervalado → null, badge ausente.
+- [Certo] A página Running NÃO tem lista de atividades (removida a pedido).
+  ActivityDetailPanel é alcançável via personal-records-tiles e via
+  last-workout-card (dashboard, abaixo do readiness-hero).
 
 ## Testes e CI
 - Vitest, 77 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
@@ -42,18 +51,17 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
 - npm audit: 2 moderate = postcss embutido no Next 15 (build-time, sem exposição
   real); só sai no Next 16. NUNCA npm audit fix --force (propõe downgrade p/ Next 9).
 
-## Dívidas conhecidas
+## Dúvidas conhecidas
 - Mover ReadinessCardData/RecoveryCardData para lib/types/ e apagar os componentes
   ReadinessCard/RecoveryCard (mortos desde o readiness-hero; ficheiros sobrevivem
   só pelos tipos).
-- Throttle órfão: setTimeout(250) no buildContextSummary do coach — redundante
-  com o semáforo; remover na próxima passagem pelo coach.
 - Composto de readiness: evoluir comparação de HRV para média 7d vs baseline 30-60d
   (uma noite vs média é ruidoso). Iteração, não bug.
 - Split de lib/freddy/metrics.ts (ainda ~2000 linhas) em módulos.
 
+
 ## Roadmap
-- Feitos: 1 (cache), 2 (limpeza), 3 (testes+CI), 4 (auth), fixes de localização/AQI/HRV.
-- EM CURSO: item 7 — memória do coach prescrito vs executado, com decoupling
-  embutido (item 5). Prompt acordado com o utilizador no chat.
-- Depois: 6 (80/20 semanal), 8 (card sub-3h), 9 (ramp/monotony), 10 (modelo p/ prescrição).
+- Feitos: 1 (cache), 2 (limpeza), 3 (testes+CI), 4 (auth), 5+7 (memória do coach
+  prescrito vs executado com decoupling e guardrails), 6 (80/20 semanal),
+  card Último Treino, fixes de localização/AQI/HRV/TSB.
+- PRÓXIMO: 8 (card sub-3h). Depois: 9 (ramp/monotony), 10 (modelo p/ prescrição).

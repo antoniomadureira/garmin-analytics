@@ -6,6 +6,7 @@ import { getIcuPaceZones } from "@/lib/intervals/client";
 import { loadRecentWorkoutDates, loadPrescription } from "@/lib/coach/prescription-store";
 import { loadExecution } from "@/lib/coach/execution-analysis";
 import type { PrescribedWorkout, WorkoutExecution } from "@/lib/types/coach";
+import { getPreviousDayWellness } from "@/lib/utils/wellness";
 
 /**
  * [Certo] Endpoint e modelo confirmados em console.groq.com/docs (2026-06-25):
@@ -142,9 +143,8 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
     : [];
   const latestReadiness = readinessEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), readinessEntries[0]);
   const latestLoad = loadEntries.reduce((b, c) => (!b || c.date > b.date ? c : b), loadEntries[0]);
-  const latestWellness = wellness[wellness.length - 1];
-
   const todayStr = new Date().toISOString().slice(0, 10);
+  const latestWellness = getPreviousDayWellness(wellness, todayStr);
   const staleDays = latestReadiness
     ? Math.round((new Date(todayStr).getTime() - new Date(latestReadiness.date).getTime()) / 86400000)
     : 0;
@@ -154,7 +154,7 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
       ? `[FONTE PRINCIPAL para "estou apto a treinar hoje", composto próprio de sinais frescos de hoje]: Score composto ${composed.compositeScore}/100. Recomendação base: "${composed.recommendation}". Sinais individuais: ${composed.signals.map((s) => `${s.label}: ${s.detail} (${s.status})`).join("; ")}. Este composto é uma média simples e transparente de sinais frescos (TSB, HRV, FC repouso, sono, stress) — NÃO é o algoritmo oficial do Garmin, é a tua melhor aproximação dada a indisponibilidade do Training Readiness real. Usa isto como base principal da resposta, explica os sinais que mais pesaram, e dá uma recomendação concreta de tipo de treino (fácil/moderado/séries/descanso).`
       : "Sem sinais frescos suficientes para um composto de readiness (Intervals.icu pode estar indisponível neste momento).",
     latestWellness
-      ? `[Intervals.icu, dados de HOJE ${latestWellness.date}, carga de treino]: CTL (fitness) ${latestWellness.ctl}, ATL (fadiga) ${latestWellness.atl}, TSB ${latestWellness.tsb}.`
+      ? `[Intervals.icu, dados de ${latestWellness.date} (ontem), carga de treino]: CTL (fitness) ${latestWellness.ctl}, ATL (fadiga) ${latestWellness.atl}, TSB ${latestWellness.tsb}.`
       : "Sem dados do Intervals.icu disponíveis.",
     zones && zones.heartRateZones.length > 0
       ? `[Zonas de FC REAIS do atleta, Strava]: ${zones.heartRateZones.map((z) => `Z${z.zone} ${z.min}-${z.max}bpm`).join(", ")}. Usa estes valores exatos ao sugerir treinos por zona, em vez de inventar.`
