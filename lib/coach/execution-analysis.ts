@@ -84,14 +84,17 @@ export interface BuildExecutionParams {
 export function buildExecutionAnalysis(params: BuildExecutionParams): WorkoutExecution {
   const { date, distanceKm, durationSec, avgHrBpm, series, prescription } = params;
 
+  // Pace do SUMMARY (durationSec / distanceKm), não de streams.
+  // Média aritmética de pace/km por sample overestima o pace real porque
+  // é matematicamente equivalente à média aritmética de paces, não à
+  // média harmónica (que é igual a distância/tempo para samples 1Hz).
+  // Streams ficam só para decoupling e análise de séries.
+  const avgPaceMinPerKm = distanceKm > 0 ? durationSec / 60 / distanceKm : null;
+
   const validPace = series.filter(
     (s): s is { paceMinPerKm: number; hr: number | null } =>
       s.paceMinPerKm !== null && s.paceMinPerKm > 0,
   );
-  const avgPaceMinPerKm =
-    validPace.length > 0
-      ? validPace.reduce((s, p) => s + p.paceMinPerKm, 0) / validPace.length
-      : null;
 
   // Guardrail: decoupling só é válido para treino contínuo
   // — prescrição com reps > 1 → matchedBlocks false, sem decoupling

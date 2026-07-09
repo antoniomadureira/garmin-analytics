@@ -41,6 +41,7 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   ActivityDetailPanel é alcançável via personal-records-tiles e via
   last-workout-card (dashboard, abaixo do readiness-hero).
   [Certo] Sinais da manhã (sono/HRV/RHR/bateria) leem getMorningWellness (registo de hoje = noite passada); carga (CTL/ATL/TSB) lê getDecisionWellness (ontem). NUNCA aplicar getDecisionWellness a sinais da manhã — regressão histórica de sobrecorreção.
+  [Certo] NUNCA média aritmética de paces por amostra — pace agregado = distância total / tempo total (samples 1Hz: média harmónica). Viés confirmado: +15s/km num treino real.
 
 ## Testes e CI
 - Vitest, 77 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
