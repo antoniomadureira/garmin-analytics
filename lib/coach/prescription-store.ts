@@ -116,7 +116,7 @@ export function parseIcuWorkout(name: string, description: string): PrescribedWo
 
 // ─── Redis persistence ───────────────────────────────────────────────────────
 
-async function trackDate(date: string): Promise<void> {
+export async function trackDate(date: string): Promise<void> {
   const existing = (await kv.get<string[]>(DATES_KEY)) ?? [];
   const updated = [date, ...existing.filter((d) => d !== date)].slice(0, MAX_TRACKED_DATES);
   await kv.set(DATES_KEY, updated, { ex: TTL });

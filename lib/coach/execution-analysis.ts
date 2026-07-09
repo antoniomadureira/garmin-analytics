@@ -1,5 +1,6 @@
 import { kv } from "@/lib/redis";
 import type { PrescribedWorkout, WorkoutExecution } from "@/lib/types/coach";
+import { trackDate } from "@/lib/coach/prescription-store";
 
 const TTL = 90 * 24 * 3600; // 90 dias
 
@@ -155,7 +156,10 @@ export function buildExecutionAnalysis(params: BuildExecutionParams): WorkoutExe
 // ─── Redis persistence ───────────────────────────────────────────────────────
 
 export async function saveExecution(date: string, analysis: WorkoutExecution): Promise<void> {
-  await kv.set(`coach:executed:${date}`, analysis, { ex: TTL });
+  await Promise.all([
+    kv.set(`coach:executed:${date}`, analysis, { ex: TTL }),
+    trackDate(date),
+  ]);
 }
 
 export async function loadExecution(date: string): Promise<WorkoutExecution | null> {

@@ -5,8 +5,11 @@ import { resolve } from "node:path";
 vi.mock("@/lib/redis");
 vi.mock("@/lib/freddy/client", () => ({ getFreddyClient: vi.fn() }));
 
-import { parseIcuWorkout } from "@/lib/coach/prescription-store";
-import { computeAeroDecoupling, buildExecutionAnalysis, isPaceContinuous } from "@/lib/coach/execution-analysis";
+import { parseIcuWorkout, loadRecentWorkoutDates } from "@/lib/coach/prescription-store";
+import { computeAeroDecoupling, buildExecutionAnalysis, isPaceContinuous, saveExecution } from "@/lib/coach/execution-analysis";
+import { formatWorkoutHistory } from "@/lib/coach/workout-history";
+import { __reset } from "@/lib/__mocks__/redis";
+import type { WorkoutExecution } from "@/lib/types/coach";
 
 // ─── parseIcuWorkout ─────────────────────────────────────────────────────────
 
@@ -344,5 +347,103 @@ describe("buildExecutionAnalysis — guardrails de decoupling", () => {
     expect(() => buildExecutionAnalysis({ ...BASE_PARAMS, series: shortSeries, prescription: null })).not.toThrow();
     const result = buildExecutionAnalysis({ ...BASE_PARAMS, series: shortSeries, prescription: null });
     expect(result.aeroDecouplingPct).toBeNull();
+  });
+});
+
+// ─── saveExecution → trackDate ───────────────────────────────────────────────
+// saveExecution agora chama trackDate: qualquer execução entra no índice,
+// mesmo sem prescrição correspondente (execuções "órfãs" ficam visíveis).
+
+const BASE_EXECUTION: WorkoutExecution = {
+  date: "2026-07-07",
+  distanceKm: 12.3,
+  durationSec: 3900,
+  avgPaceMinPerKm: 5.28,
+  avgHrBpm: 142,
+  aeroDecouplingPct: 3.2,
+  distanceDeltaM: null,
+  durationDeltaSec: null,
+  paceVsTargetSecPerKm: null,
+  matchedBlocks: null,
+};
+
+describe("saveExecution — trackDate via execução", () => {
+  beforeEach(() => __reset());
+
+  it("saveExecution adiciona a data ao índice coach:workout-dates", async () => {
+    await saveExecution("2026-07-07", BASE_EXECUTION);
+    const dates = await loadRecentWorkoutDates(10);
+    expect(dates).toContain("2026-07-07");
+  });
+
+  it("execução órfã reindexada aparece em loadRecentWorkoutDates após re-save", async () => {
+    // Simula estado pós-diagnóstico: data não estava no índice
+    // Chamar saveExecution reindexada deve torná-la visível
+    const before = await loadRecentWorkoutDates(10);
+    expect(before).not.toContain("2026-07-07");
+
+    await saveExecution("2026-07-07", BASE_EXECUTION);
+
+    const after = await loadRecentWorkoutDates(10);
+    expect(after).toContain("2026-07-07");
+  });
+});
+
+// ─── formatWorkoutHistory — 3 estados ────────────────────────────────────────
+
+const EXEC_SAMPLE: WorkoutExecution = {
+  date: "2026-07-07",
+  distanceKm: 12.3,
+  durationSec: 3900,
+  avgPaceMinPerKm: 5.28,
+  avgHrBpm: 142,
+  aeroDecouplingPct: 3.2,
+  distanceDeltaM: null,
+  durationDeltaSec: null,
+  paceVsTargetSecPerKm: -8,
+  matchedBlocks: null,
+};
+
+const PRESC_SAMPLE = parseIcuWorkout(
+  "Rolante Z2",
+  "Principal\n- 60min 65-70% HR",
+);
+
+describe("formatWorkoutHistory — 3 estados", () => {
+  it("string vazia quando lista está vazia", () => {
+    expect(formatWorkoutHistory([])).toBe("");
+  });
+
+  it("estado 1 — par completo: inclui nome, prescrito, executado e desvio vs alvo", () => {
+    const result = formatWorkoutHistory([{ date: "2026-07-07", prescribed: PRESC_SAMPLE, executed: EXEC_SAMPLE }]);
+    expect(result).toContain("Rolante Z2");
+    expect(result).toContain("prescrito: 60min");
+    expect(result).toContain("executado 12.3km em 65min");
+    expect(result).toContain("pace -8s/km vs alvo");
+    // instrução reforçada presente
+    expect(result).toContain("DEVES referir explicitamente");
+  });
+
+  it("estado 2 — só executado: prefixo 'treino sem prescrição:' e dados da execução", () => {
+    const result = formatWorkoutHistory([{ date: "2026-07-07", prescribed: null, executed: EXEC_SAMPLE }]);
+    expect(result).toContain("treino sem prescrição:");
+    expect(result).toContain("12.3km em 65min");
+    expect(result).toContain("decoupling 3.2% (estável)");
+    // NÃO deve conter "executado" como prefixo nem "prescrição" como campo
+    expect(result).not.toContain("prescrito:");
+  });
+
+  it("estado 3 — só prescrito: 'sem execução registada'", () => {
+    const result = formatWorkoutHistory([{ date: "2026-07-07", prescribed: PRESC_SAMPLE, executed: null }]);
+    expect(result).toContain("Rolante Z2");
+    expect(result).toContain("sem execução registada");
+    // linha de dados não tem prefix "executado X km" nem "treino sem prescrição"
+    expect(result).not.toContain("treino sem prescrição");
+    expect(result).not.toMatch(/executado \d/); // "executado Nkm" ausente na linha de dados
+  });
+
+  it("par sem nenhum lado é filtrado (linha ausente)", () => {
+    const result = formatWorkoutHistory([{ date: "2026-07-07", prescribed: null, executed: null }]);
+    expect(result).toBe("");
   });
 });
