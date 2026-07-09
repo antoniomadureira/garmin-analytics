@@ -6,6 +6,7 @@ import { getIcuPaceZones } from "@/lib/intervals/client";
 import { loadRecentWorkoutDates, loadPrescription } from "@/lib/coach/prescription-store";
 import { loadExecution } from "@/lib/coach/execution-analysis";
 import { formatWorkoutHistory, secPerKmToMinSec } from "@/lib/coach/workout-history";
+import { loadGoal, formatGoalContext } from "@/lib/coach/goal-store";
 import type { PrescribedWorkout, WorkoutExecution } from "@/lib/types/coach";
 import { getDecisionWellness } from "@/lib/utils/wellness";
 
@@ -31,7 +32,7 @@ function formatPaceRange(minSec: number | null, maxSec: number | null): string {
   return "?";
 }
 
-async function buildContextSummary(geo?: GeoHint): Promise<string> {
+async function buildContextSummary(geo?: GeoHint, messages: ChatMessage[] = []): Promise<string> {
   let service;
   try {
     service = await getFreddyDataService();
@@ -51,7 +52,7 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
     service.getWellnessWeekly(30).catch(() => []),
   ]);
   // [Certo] setTimeout(250) removido — redundante com semáforo em lib/freddy/limiter.ts
-  const [loadEntries, running, composed, zones, todayActivities, weather, aq, paceZones, recentDates] = await Promise.all([
+  const [loadEntries, running, composed, zones, todayActivities, weather, aq, paceZones, recentDates, goal] = await Promise.all([
     service.getTrainingLoadSummary(7).catch(() => []),
     service.getWeeklyRunningSummary(7).catch(() => null),
     service.getComposedReadinessFromWellness(wellness).catch(() => null),
@@ -66,6 +67,7 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
     getIcuPaceZones().catch(() => null),
     // Redis — sem rate limit, corre em paralelo com os pedidos Freddy
     loadRecentWorkoutDates(3).catch((): string[] => []),
+    loadGoal().catch(() => null),
   ]);
 
   // Carrega pares prescrição/execução (Redis, rápido)
@@ -89,6 +91,20 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
   const staleDays = latestReadiness
     ? Math.round((new Date(todayStr).getTime() - new Date(latestReadiness.date).getTime()) / 86400000)
     : 0;
+
+  // Detect if the last user message is likely a prescription request.
+  // The citation instruction ("DEVES referir o último treino") is relevant
+  // only when the model is about to prescribe — not in general Q&A.
+  const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+  const isPrescriptionRequest = /\b(prescreve|prescri|treino (para|de) hoje|que treino|que (posso|devo) (fazer|treinar|correr)|sessão|propõe|sugere (um |uma )?treino)\b/i.test(lastUserMsg);
+
+  // Workout history block (built before logging so we can log it exactly as injected)
+  const historyBlock = formatWorkoutHistory(workoutHistory, isPrescriptionRequest);
+  const goalBlock = goal ? formatGoalContext(goal, todayStr) : "";
+
+  // Permanent instrumentation — visible in Vercel Function logs
+  if (goalBlock) console.log("[coach:goal]", goalBlock);
+  if (historyBlock) console.log("[coach:history]", historyBlock);
 
   return [
     composed && composed.compositeScore !== null
@@ -118,7 +134,6 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
       : "",
     latestLoad ? `ACWR (Garmin, complementar): status ${latestLoad.acwrStatus}, ratio ${latestLoad.acwrRatio}.` : "",
     (() => {
-      const todayStr = new Date().toISOString().slice(0, 10);
       const todayRuns = todayActivities.filter((a) => a.date === todayStr);
       if (todayRuns.length === 0) return "Sem atividade registada hoje ainda.";
       const totalKm = todayRuns.reduce((s, a) => s + a.distanceKm, 0);
@@ -128,7 +143,8 @@ async function buildContextSummary(geo?: GeoHint): Promise<string> {
       } Se o utilizador pergunta "que treino posso fazer hoje" DEPOIS de já ter treinado, reconhece isso explicitamente e adapta a recomendação (ex: recuperação activa, descanso, ou segundo treino leve se o TSB o permitir).`;
     })(),
     running ? `Volume últimos 7 dias (summarized, pode não incluir hoje): ${running.totalDistanceKm} km em ${running.runCount} corridas.` : "Sem dados de volume semanal.",
-    formatWorkoutHistory(workoutHistory),
+    goalBlock,
+    historyBlock,
   ]
     .filter(Boolean)
     .join("\n");
@@ -203,7 +219,7 @@ export async function POST(req: NextRequest) {
     city: cookieLat ? null : req.headers.get("x-vercel-ip-city"),
     source: cookieLat ? "cookie" : process.env.WEATHER_LAT ? "env" : vercelLat ? "vercel-geo-ip" : "default",
   };
-  const context = await buildContextSummary(geo);
+  const context = await buildContextSummary(geo, messages);
 
   const groqRes = await fetch(GROQ_URL, {
     method: "POST",

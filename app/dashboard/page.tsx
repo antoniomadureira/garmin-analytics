@@ -10,8 +10,10 @@ import { RunningSummaryCard, type RunningSummaryCardData } from "@/components/da
 import { IntensityDistributionChart } from "@/components/dashboard/intensity-distribution-chart";
 import type { WeeklyIntensityData } from "@/lib/analysis/intensity-distribution";
 import { LastWorkoutCard } from "@/components/dashboard/last-workout-card";
+import { RaceGoalCard, type RaceGoalCardData } from "@/components/dashboard/race-goal-card";
 import { getLastActivityDate } from "@/lib/utils/activity";
 import { getDecisionWellness } from "@/lib/utils/wellness";
+import { loadGoal, weeksRemaining, cyclePhase } from "@/lib/coach/goal-store";
 import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
 import { ReadinessHero } from "@/components/dashboard/readiness-hero";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
@@ -245,6 +247,35 @@ async function loadRunningSummary(service: Awaited<ReturnType<typeof getFreddyDa
   }
 }
 
+async function loadRaceGoalCard(
+  service: Awaited<ReturnType<typeof getFreddyDataService>> | null,
+): Promise<{ data: RaceGoalCardData | null; isReal: boolean; error?: string }> {
+  const goal = await loadGoal().catch(() => null);
+  if (!goal) return { data: null, isReal: false };
+
+  const today = new Date().toISOString().slice(0, 10);
+  const weeksLeft = weeksRemaining(goal.date, today);
+  const phase = cyclePhase(weeksLeft);
+  const [h, m, s] = goal.targetTime.split(":").map(Number);
+  const targetSec = h * 3600 + m * 60 + s;
+
+  let predictedSec: number | null = null;
+  let predictionDate: string | null = null;
+  if (service) {
+    try {
+      const pred = await service.getRacePredictions();
+      predictedSec = pred.timeMarathonSec;
+      predictionDate = pred.date;
+    } catch { /* graceful — previsão indisponível */ }
+  }
+
+  return {
+    data: { raceName: goal.race, raceDate: goal.date, weeksLeft, phase, targetSec, predictedSec, predictionDate },
+    isReal: predictedSec !== null,
+    error: !service ? "Freddy indisponível" : predictedSec === null ? "Sem previsão Garmin" : undefined,
+  };
+}
+
 async function loadLastWorkout(
   service: Awaited<ReturnType<typeof getFreddyDataService>> | null,
   connectError?: string,
@@ -358,7 +389,7 @@ export default async function DashboardPage() {
     source: geoSource,
   };
 
-  const [[readinessResult, recoveryResult], trainingLoadResult, yoyResult, runningResult, weatherImpact, intensityResult, lastWorkoutResult] = await Promise.all([
+  const [[readinessResult, recoveryResult], trainingLoadResult, yoyResult, runningResult, weatherImpact, intensityResult, lastWorkoutResult, raceGoalResult] = await Promise.all([
     loadReadinessAndRecovery(service, connectError),
     loadTrainingLoad(service, connectError),
     loadYoyKpis(service, connectError),
@@ -374,6 +405,7 @@ export default async function DashboardPage() {
     ).catch(() => null),
     loadRunningIntensity(service, connectError),
     loadLastWorkout(service, connectError),
+    loadRaceGoalCard(service),
   ]);
 
   // Fallback Strava: quando Freddy está completamente indisponível
@@ -414,6 +446,17 @@ export default async function DashboardPage() {
         {lastWorkoutResult.date && (
           <section>
             <LastWorkoutCard date={lastWorkoutResult.date} />
+          </section>
+        )}
+
+        {/* Objetivo de prova — contexto estratégico */}
+        {raceGoalResult.data && (
+          <section>
+            <RaceGoalCard
+              data={raceGoalResult.data}
+              isReal={raceGoalResult.isReal}
+              error={raceGoalResult.error}
+            />
           </section>
         )}
 

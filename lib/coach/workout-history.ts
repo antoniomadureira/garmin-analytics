@@ -16,6 +16,7 @@ export function formatWorkoutHistory(
     prescribed: PrescribedWorkout | null;
     executed: WorkoutExecution | null;
   }>,
+  includeInstruction = true,
 ): string {
   const lines = pairs
     .filter((p) => p.prescribed || p.executed)
@@ -60,5 +61,8 @@ export function formatWorkoutHistory(
     });
 
   if (!lines.length) return "";
-  return `[HISTÓRICO PRESCRITO/EXECUTADO — DEVES referir explicitamente o último treino executado (pace, desvio do alvo quando existir) na tua justificação antes de prescrever hoje]:\n${lines.join("\n")}`;
+  const header = includeInstruction
+    ? "[HISTÓRICO PRESCRITO/EXECUTADO — DEVES referir explicitamente o último treino executado (pace, desvio do alvo quando existir) na tua justificação antes de prescrever hoje]"
+    : "[HISTÓRICO PRESCRITO/EXECUTADO]";
+  return `${header}:\n${lines.join("\n")}`;
 }
