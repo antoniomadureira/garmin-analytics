@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getPreviousDayWellness, getDecisionWellness } from "@/lib/utils/wellness";
+import { getPreviousDayWellness, getDecisionWellness, getMorningWellness } from "@/lib/utils/wellness";
 
 interface W { date: string; atl: number; }
 
@@ -92,5 +92,67 @@ describe("getDecisionWellness — hoje contaminado", () => {
   it("sem registo anterior a hoje → undefined (sem crash)", () => {
     const onlyToday = [contaminated[contaminated.length - 1]]; // só hoje
     expect(getDecisionWellness(onlyToday, TODAY)).toBeUndefined();
+  });
+});
+
+// ─── getMorningWellness ───────────────────────────────────────────────────────
+// Devolve o último registo com sono/HRV/RHR (tipicamente hoje, sem restrição
+// de date < hoje). Dados de manhã não são contaminados pelo push do coach.
+
+interface WMorning {
+  date: string;
+  sleepScore: number | null;
+  hrv: number | null;
+  restingHr: number | null;
+  tsb: number; // só para o teste de integração
+}
+
+const morningFixture: WMorning[] = [
+  { date: "2026-07-06", sleepScore: 70, hrv: 55, restingHr: 57, tsb:  3.0 },
+  { date: "2026-07-07", sleepScore: 59, hrv: 48, restingHr: 54, tsb: -15.8 }, // ontem — TSB real
+  { date: "2026-07-08", sleepScore: 76, hrv: 61, restingHr: 50, tsb:  -5.9 }, // hoje — sono fresco, TSB contaminado
+];
+
+describe("getMorningWellness", () => {
+  it("devolve o último registo com sono/HRV (hoje, não ontem)", () => {
+    const r = getMorningWellness(morningFixture);
+    expect(r?.date).toBe("2026-07-08");
+    expect(r?.sleepScore).toBe(76);
+  });
+
+  it("array vazio → undefined", () => {
+    expect(getMorningWellness([])).toBeUndefined();
+  });
+
+  it("ignora entradas onde os três campos são null/undefined", () => {
+    const sparse: WMorning[] = [
+      { date: "2026-07-06", sleepScore: 65, hrv: 50, restingHr: 56, tsb: 2 },
+      { date: "2026-07-07", sleepScore: null, hrv: null, restingHr: null, tsb: -10 },
+    ];
+    const r = getMorningWellness(sparse);
+    expect(r?.date).toBe("2026-07-06"); // salta 07-07 (tudo null) e devolve 07-06
+  });
+
+  it("aceita registo de hoje (sem restrição date < today)", () => {
+    // contraste com getDecisionWellness que excluiria hoje
+    const withToday: WMorning[] = [
+      { date: "2026-07-07", sleepScore: 59, hrv: 48, restingHr: 54, tsb: -15.8 },
+      { date: "2026-07-09", sleepScore: 80, hrv: 65, restingHr: 49, tsb: 1 },
+    ];
+    expect(getMorningWellness(withToday)?.date).toBe("2026-07-09");
+    expect(getDecisionWellness(withToday, "2026-07-09")?.date).toBe("2026-07-07");
+  });
+
+  it("integração: sono de hoje (getMorning) vs TSB de ontem (getDecision) — sinais independentes", () => {
+    const morning = getMorningWellness(morningFixture);
+    const decision = getDecisionWellness(morningFixture, "2026-07-08");
+
+    // sono fresco da noite passada (registo de hoje)
+    expect(morning?.sleepScore).toBe(76);
+    expect(morning?.date).toBe("2026-07-08");
+
+    // TSB real de ontem (antes de qualquer push do coach)
+    expect(decision?.tsb).toBe(-15.8);
+    expect(decision?.date).toBe("2026-07-07");
   });
 });

@@ -76,7 +76,7 @@
 
 import { kv } from "@/lib/redis";
 import { formatHrvDeltaPct, computeHrvDeviation } from "@/lib/utils/hrv";
-import { getDecisionWellness } from "@/lib/utils/wellness";
+import { getDecisionWellness, getMorningWellness } from "@/lib/utils/wellness";
 import { aggregateIntensity, type WeeklyIntensityData } from "@/lib/analysis/intensity-distribution";
 
 // -----------------------------------------------------------------------------
@@ -751,11 +751,17 @@ export class FreddyDataService {
     recommendation: string;
     level: "green" | "yellow" | "red" | "unknown";
     signals: { label: string; status: "bom" | "ok" | "atencao"; detail: string; subScore: number | null }[];
-    /** Data do entry de wellness usado para os sinais (TSB, HRV, sono, FC). Exposto para diagnóstico. */
-    wellnessDate: string | null;
+    /** Data do entry usado para sono/RHR (tipicamente hoje — noite passada). */
+    morningDate: string | null;
+    /** Data do entry usado para TSB/CTL/ATL (ontem — exclui contaminação do coach push). */
+    decisionDate: string | null;
   }> {
     const battery = await this.getBodyBatteryWeekly(3).catch(() => []);
-    const latest = getDecisionWellness(wellness);
+    // Dois "latest" distintos:
+    // latestMorning → sono/RHR (hoje: Garmin sincroniza a noite passada hoje de manhã, não contaminável)
+    // latestDecision → TSB/CTL/ATL (ontem: coach push contamina ATL/TSB de hoje antes de qualquer treino)
+    const latestMorning = getMorningWellness(wellness);
+    const latestDecision = getDecisionWellness(wellness);
     const latestBattery = battery[battery.length - 1];
     const { hrv: latestHrv, baseline: hrvBaseline, deltaPct: hrvDeltaPct } = computeHrvDeviation(wellness);
     const rhrValues = wellness.map((w) => w.restingHr).filter((v): v is number => v !== null);
@@ -763,9 +769,9 @@ export class FreddyDataService {
 
     const signals: { label: string; status: "bom" | "ok" | "atencao"; detail: string; subScore: number | null }[] = [];
 
-    // TSB
-    if (latest?.tsb !== null && latest?.tsb !== undefined) {
-      const tsb = latest.tsb;
+    // TSB — usa latestDecision (ontem) para evitar contaminação do push do coach
+    if (latestDecision?.tsb !== null && latestDecision?.tsb !== undefined) {
+      const tsb = latestDecision.tsb;
       const status = tsb > 5 ? "bom" : tsb >= -10 ? "ok" : "atencao";
       const subScore = tsb > 5 ? 100 : tsb >= -10 ? 70 : tsb >= -20 ? 40 : 10;
       signals.push({ label: "Carga de Treino (TSB)", status, detail: `${tsb > 0 ? "+" : ""}${tsb}`, subScore });
@@ -778,17 +784,17 @@ export class FreddyDataService {
       signals.push({ label: "HRV", status, detail: `${latestHrv}ms (${formatHrvDeltaPct(latestHrv, hrvBaseline)} vs média 30d)`, subScore });
     }
 
-    // FC repouso vs média 7d (inverso: mais alto que a média é mau sinal)
-    if (latest?.restingHr !== null && latest?.restingHr !== undefined && rhrAvg !== null) {
-      const diffPct = ((latest.restingHr - rhrAvg) / rhrAvg) * 100;
+    // FC repouso vs média 7d — usa latestMorning (hoje: Garmin sincroniza a noite passada de manhã)
+    if (latestMorning?.restingHr !== null && latestMorning?.restingHr !== undefined && rhrAvg !== null) {
+      const diffPct = ((latestMorning.restingHr - rhrAvg) / rhrAvg) * 100;
       const status = diffPct <= 3 ? "bom" : diffPct <= 7 ? "ok" : "atencao";
       const subScore = Math.max(0, Math.min(100, Math.round(70 - diffPct * 5)));
-      signals.push({ label: "FC Repouso", status, detail: `${latest.restingHr}bpm (${diffPct >= 0 ? "+" : ""}${diffPct.toFixed(0)}% vs média)`, subScore });
+      signals.push({ label: "FC Repouso", status, detail: `${latestMorning.restingHr}bpm (${diffPct >= 0 ? "+" : ""}${diffPct.toFixed(0)}% vs média)`, subScore });
     }
 
-    // Sono (score já 0-100)
-    if (latest?.sleepScore !== null && latest?.sleepScore !== undefined) {
-      const s = latest.sleepScore;
+    // Sono — usa latestMorning (hoje: noite passada sincronizada de manhã)
+    if (latestMorning?.sleepScore !== null && latestMorning?.sleepScore !== undefined) {
+      const s = latestMorning.sleepScore;
       const status = s >= 75 ? "bom" : s >= 55 ? "ok" : "atencao";
       signals.push({ label: "Sono", status, detail: `${s}/100`, subScore: s });
     }
@@ -827,7 +833,7 @@ export class FreddyDataService {
       level = "red";
     }
 
-    return { compositeScore, recommendation, level, signals, wellnessDate: latest?.date ?? null };
+    return { compositeScore, recommendation, level, signals, morningDate: latestMorning?.date ?? null, decisionDate: latestDecision?.date ?? null };
   }
 
   async getWellnessWeekly(days = 7): Promise<WellnessDay[]> {
@@ -893,14 +899,14 @@ export class FreddyDataService {
       .map((v) => v?.acuteLoad ?? null).find((v) => v !== null) ?? null) as number | null;
 
     const latestBattery = battery.length ? battery[battery.length - 1] : null;
-    const latest = getDecisionWellness(wellness) ?? null;
+    // latestMorning para RHR: Garmin sincroniza a noite passada no registo de hoje de manhã.
+    // Não usar getDecisionWellness aqui — atrasaria o RHR um dia sem necessidade.
+    const latestMorning = getMorningWellness(wellness) ?? null;
     // [Certo] hrv vem de computeHrvDeviation (último COM hrv não-nulo) — alinhado
     // com getComposedReadinessFromWellness para que card e hero mostrem o mesmo valor.
     const { hrv: currentHrv, baseline: hrvBaseline } = computeHrvDeviation(wellness);
-    // baselineEntries: entradas estritamente antes de latest (exclui ontem e hoje).
-    // Com wellness[last] como latest, slice(0,-1) excluía hoje mas deixava ontem
-    // na baseline — o mesmo dia seria simultaneamente "actual" e "baseline". Corrigido.
-    const baselineEntries = latest ? wellness.filter((w) => w.date < latest.date) : wellness.slice(0, -1);
+    // baselineEntries: entradas estritamente antes de latestMorning (exclui o registo actual).
+    const baselineEntries = latestMorning ? wellness.filter((w) => w.date < latestMorning.date) : wellness.slice(0, -1);
     const rhrValues = baselineEntries.filter((w) => w.restingHr !== null);
     const restingHrBaseline = rhrValues.length ? roundTo(rhrValues.reduce((s, w) => s + (w.restingHr ?? 0), 0) / rhrValues.length, 1) : null;
 
@@ -912,7 +918,7 @@ export class FreddyDataService {
       avgStress: latestBattery?.avgStress ? Math.round(latestBattery.avgStress) : null,
       hrv: currentHrv,
       hrvBaseline,
-      restingHr: latest?.restingHr ?? null,
+      restingHr: latestMorning?.restingHr ?? null,
       restingHrBaseline,
     };
   }

@@ -36,3 +36,26 @@ export function getDecisionWellness<T extends { date: string }>(
 ): T | undefined {
   return getPreviousDayWellness(wellness, todayStr);
 }
+
+/**
+ * Devolve o último registo com dados de sono/HRV/FC repouso (tipicamente hoje).
+ *
+ * Porquê não usar getDecisionWellness para estes sinais:
+ * O Garmin sincroniza sono, HRV e FC de repouso da NOITE PASSADA no
+ * registo de HOJE. O registo de hoje não é contaminável por push do coach
+ * (só ATL/TSB são afectados por treinos planeados). Usar getDecisionWellness
+ * atrasaria estes sinais um dia desnecessariamente — mostraria a noite
+ * de anteontem em vez da noite passada.
+ */
+export function getMorningWellness<T extends {
+  date: string;
+  sleepScore?: number | null;
+  hrv?: number | null;
+  restingHr?: number | null;
+}>(wellness: T[]): T | undefined {
+  for (let i = wellness.length - 1; i >= 0; i--) {
+    const w = wellness[i];
+    if (w.sleepScore != null || w.hrv != null || w.restingHr != null) return w;
+  }
+  return undefined;
+}
