@@ -64,6 +64,13 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   (bug: "-23s/km" lido como défice de velocidade). Convenção: aritmética e
   comparações de pace nunca são do Llama — modelo cita texto pré-formatado.
 
+- [Certo] Previsao de maratona (card Rumo ao sub-3h): Garmin se fresco (<14d);
+  Riegel (lib/analysis/race-prediction.ts, T2=T1*(D2/D1)^1.06) sobre melhor
+  esforco Strava <=90d em HM>15K>10K, caso contrario. Badge de fonte no card.
+  getRacePredictions REESCRITO (2026-07-10): usava parseQueryMetricsText (so
+  le raw:) — race predictions sao escalares sem raw:, logo devolvia {} sempre.
+  Fix: queryRawText + extractValuesByDate. Lag Garmin confirmado: 19 dias.
+  days:30 cobre o lag; check de frescura (<14d) em loadRaceGoalCard.
 - [Certo] Ramp rate (lib/analysis/training-stress.ts): consumido de wellness.rampRate
   (Intervals.icu, CTL/sem), NUNCA recalculado. Semáforo: <1.0 ok; 1.0-1.5 atenção;
   ≥1.5 sustentado 2+ semanas → alerta (verifica weekAgo com Date.UTC para evitar
@@ -83,7 +90,7 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   Regra: parser para fonte nova só com fixture REAL capturada antes.
 
 ## Testes e CI
-- Vitest, 248 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
+- Vitest, 260 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
 - Fixtures REAIS em tests/fixtures/ — dados fisiológicos, .gitignore, NUNCA
   commitar. CI corre contra tests/fixtures-synthetic/ (estrutura real, valores falsos).
 - tools/capture-fixtures.ts recaptura output MCP real (npm run fixtures:capture, local).
