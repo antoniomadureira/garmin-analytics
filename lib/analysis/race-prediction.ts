@@ -1,6 +1,6 @@
 export interface RiegelResult {
   predictedMarathonSec: number;
-  sourceLabel: string;    // "HM" | "15K" | "10K"
+  sourceLabel: "HM" | "10K" | "5K";
   sourceDate: string;     // YYYY-MM-DD when the source effort was recorded
 }
 
@@ -9,11 +9,12 @@ export function riegelMarathon(distanceKm: number, durationSec: number): number 
   return Math.round(durationSec * Math.pow(42.195 / distanceKm, 1.06));
 }
 
-// Longest distances first — HM is a better marathon predictor than 5K.
+// Longest distances first — HM is a better marathon predictor than shorter efforts.
+// 15K omitted: FreddyDataService.getPersonalRecords only tracks 5K/10K/HM/Marathon.
 const CANDIDATES = [
   { label: "HM", minKm: 19, maxKm: 23 },
-  { label: "15K", minKm: 12, maxKm: 18 },
   { label: "10K", minKm: 8, maxKm: 12 },
+  { label: "5K",  minKm: 4, maxKm: 6  },
 ] as const;
 
 /**

@@ -15,7 +15,6 @@ import { getLastActivityDate } from "@/lib/utils/activity";
 import { getDecisionWellness } from "@/lib/utils/wellness";
 import { computeWeeklyStressMetrics } from "@/lib/analysis/training-stress";
 import { loadGoal, weeksRemaining, cyclePhase } from "@/lib/coach/goal-store";
-import { getCachedPersonalRecords } from "@/lib/strava-lab/records-cache";
 import { selectRiegelInput } from "@/lib/analysis/race-prediction";
 import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
 import { ReadinessHero } from "@/components/dashboard/readiness-hero";
@@ -280,6 +279,7 @@ async function loadRaceGoalCard(
   let predictionDate: string | null = null;
   let predictionSource: "garmin" | "riegel" | null = null;
   let predictionSourceLabel: string | null = null;
+  let predictionStale = false;
 
   // Garmin: aceitar só se fresco (<14d) — previsões Garmin têm atraso de sync
   if (service) {
@@ -299,18 +299,25 @@ async function loadRaceGoalCard(
     }
   }
 
-  // Riegel fallback: melhor esforço recente (≤90 dias) em 10K/15K/HM
-  if (predictedSec === null) {
+  // Riegel fallback: Freddy (data = data da corrida, não data do PR all-time)
+  // Tenta janela de 70d; expande para 180d se vazio, com aviso no footer.
+  if (predictedSec === null && service) {
     const tR = performance.now();
     try {
-      const records = await getCachedPersonalRecords();
-      const riegel = selectRiegelInput(records);
-      console.log(JSON.stringify({ evt: "dashboard:timer", loader: "raceGoal:riegel", ms: Math.round(performance.now() - tR), records: records.length, found: !!riegel }));
+      const records = await service.getPersonalRecords(180);
+      let riegel = selectRiegelInput(records, 70);
+      let stale = false;
+      if (!riegel) {
+        riegel = selectRiegelInput(records, 180);
+        stale = true;
+      }
+      console.log(JSON.stringify({ evt: "dashboard:timer", loader: "raceGoal:riegel", ms: Math.round(performance.now() - tR), records: records.length, found: !!riegel, stale }));
       if (riegel) {
         predictedSec = riegel.predictedMarathonSec;
         predictionDate = riegel.sourceDate;
         predictionSource = "riegel";
         predictionSourceLabel = `Riegel/${riegel.sourceLabel}`;
+        predictionStale = stale;
       }
     } catch (e) {
       console.log(JSON.stringify({ evt: "dashboard:timer", loader: "raceGoal:riegel", ms: Math.round(performance.now() - tR), err: String(e).slice(0, 80) }));
@@ -318,9 +325,9 @@ async function loadRaceGoalCard(
   }
 
   return {
-    data: { raceName: goal.race, raceDate: goal.date, weeksLeft, phase, targetSec, predictedSec, predictionDate, predictionSource, predictionSourceLabel },
+    data: { raceName: goal.race, raceDate: goal.date, weeksLeft, phase, targetSec, predictedSec, predictionDate, predictionSource, predictionSourceLabel, predictionStale: predictionStale || undefined },
     isReal: predictedSec !== null,
-    error: predictedSec === null ? (service ? "Sem dados recentes (10K/15K/HM nos últimos 90d)" : "Freddy indisponível") : undefined,
+    error: predictedSec === null ? (service ? "Sem dados de corrida nos últimos 180d (5K/10K/HM)" : "Freddy indisponível") : undefined,
   };
 }
 

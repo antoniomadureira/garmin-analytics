@@ -10,7 +10,8 @@ export interface RaceGoalCardData {
   predictedSec: number | null;
   predictionDate: string | null;
   predictionSource: "garmin" | "riegel" | null;
-  predictionSourceLabel: string | null; // "Garmin", "Riegel/HM", "Riegel/15K", "Riegel/10K"
+  predictionSourceLabel: string | null; // "Garmin", "Riegel/HM", "Riegel/10K", "Riegel/5K"
+  predictionStale?: boolean;            // Riegel source > 70d — can show warning in footer
 }
 
 interface RaceGoalCardProps {
@@ -38,7 +39,7 @@ const DELTA_CLASS: Record<"green" | "amber" | "red", string> = {
 };
 
 export function RaceGoalCard({ data, isReal, error }: RaceGoalCardProps) {
-  const { raceName, raceDate, weeksLeft, phase, targetSec, predictedSec, predictionDate, predictionSourceLabel } = data;
+  const { raceName, raceDate, weeksLeft, phase, targetSec, predictedSec, predictionDate, predictionSourceLabel, predictionStale } = data;
 
   const delta = predictedSec !== null ? predictedSec - targetSec : null;
   const severity = delta !== null ? deltaSeverity(delta) : null;
@@ -56,7 +57,8 @@ export function RaceGoalCard({ data, isReal, error }: RaceGoalCardProps) {
       day: "numeric",
       month: "short",
     });
-    return `${predictionSourceLabel} · ${datePt}`;
+    const staleNote = predictionStale ? " — pode não refletir a forma atual" : "";
+    return `${predictionSourceLabel} · ${datePt}${staleNote}`;
   })();
 
   return (

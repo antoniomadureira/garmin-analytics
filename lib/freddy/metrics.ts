@@ -1431,14 +1431,14 @@ export class FreddyDataService {
    * para pedir só ~18 meses de propósito, dentro do limite confirmado, e o
    * texto da UI deixa de dizer "desde 2016".
    */
-  async getPersonalRecords(): Promise<
+  async getPersonalRecords(days = 540): Promise<
     { label: string; targetKm: number; distanceKm: number; durationSec: number; date: string; paceMinPerKm: number; activityName: string | null }[]
   > {
     if (!this.client.queryRawText) {
       throw new Error("Este client não implementa queryRawText — necessário para os recordes pessoais.");
     }
     const start = new Date();
-    start.setDate(start.getDate() - 540);
+    start.setDate(start.getDate() - days);
     const text = await this.client.queryRawText({
       metrics: [SummarizedActivityMetrics.distanceM, SummarizedActivityMetrics.durationSec, RunActivityMetrics.activityName],
       start: start.toISOString().slice(0, 10),

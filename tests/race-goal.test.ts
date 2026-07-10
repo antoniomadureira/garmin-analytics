@@ -126,15 +126,20 @@ describe("selectRiegelInput", () => {
     expect(result?.sourceLabel).toBe("HM");
   });
 
-  it("sem HM recente cai para 15K", () => {
-    const result = selectRiegelInput([{ distanceKm: 15, durationSec: 3600, date: recent(20) }]);
-    expect(result?.sourceLabel).toBe("15K");
+  it("sem HM recente cai para 10K", () => {
+    const result = selectRiegelInput([{ distanceKm: 10, durationSec: 2370, date: recent(20) }]);
+    expect(result?.sourceLabel).toBe("10K");
   });
 
-  it("sem HM nem 15K cai para 10K", () => {
-    const result = selectRiegelInput([{ distanceKm: 10, durationSec: 2370, date: recent(30) }]);
-    expect(result?.sourceLabel).toBe("10K");
+  it("sem HM nem 10K cai para 5K", () => {
+    const result = selectRiegelInput([{ distanceKm: 5, durationSec: 1200, date: recent(30) }]);
+    expect(result?.sourceLabel).toBe("5K");
     expect(result?.predictedMarathonSec).toBeGreaterThan(10800);
+  });
+
+  it("15K fora das categorias (12-18km) → ignorado, sem resultado", () => {
+    const result = selectRiegelInput([{ distanceKm: 15, durationSec: 3600, date: recent(10) }]);
+    expect(result).toBeNull();
   });
 
   it("registo fora da janela de 90 dias → null", () => {
