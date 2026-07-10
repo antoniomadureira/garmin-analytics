@@ -30,6 +30,7 @@ export default function CoachPage() {
   const [pushState, setPushState] = useState<Record<number, "idle" | "sending" | "done" | "error">>({});
   const [pushUrls, setPushUrls] = useState<Record<number, string>>({});
   const [icuWorkouts, setIcuWorkouts] = useState<Record<number, { name: string; description: string }>>({});
+  const [consistencyWarnings, setConsistencyWarnings] = useState<Record<number, string>>({});
 
   async function pushToIntervals(index: number) {
     const workout = icuWorkouts[index];
@@ -111,6 +112,9 @@ export default function CoachPage() {
       if (data.icuWorkout) {
         setIcuWorkouts((prev) => ({ ...prev, [newMessages.length]: data.icuWorkout }));
       }
+      if (data.consistencyWarning) {
+        setConsistencyWarnings((prev) => ({ ...prev, [newMessages.length]: data.consistencyWarning }));
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -150,6 +154,11 @@ export default function CoachPage() {
                       </button>
                     )}
                     {pushState[i] === "error" && <p className="mt-1 text-[11px] text-amber-500">Falha ao enviar — verifique as env vars (INTERVALS_ICU_API_KEY).</p>}
+                    {consistencyWarnings[i] && (
+                      <p className="mt-2 rounded border border-amber-700/40 bg-amber-900/20 px-2 py-1.5 text-[11px] text-amber-400">
+                        ⚠ Inconsistência ICU: {consistencyWarnings[i]}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

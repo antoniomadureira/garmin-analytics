@@ -8,6 +8,7 @@ import { loadExecution } from "@/lib/coach/execution-analysis";
 import { formatWorkoutHistory, secPerKmToMinSec } from "@/lib/coach/workout-history";
 import { loadGoal, formatGoalContext } from "@/lib/coach/goal-store";
 import { SYSTEM_PROMPT_BASE } from "@/lib/coach/system-prompt";
+import { checkIcuConsistency } from "@/lib/coach/icu-consistency";
 import type { PrescribedWorkout, WorkoutExecution } from "@/lib/types/coach";
 import { getDecisionWellness } from "@/lib/utils/wellness";
 
@@ -139,9 +140,11 @@ async function buildContextSummary(geo?: GeoHint, messages: ChatMessage[] = []):
       if (todayRuns.length === 0) return "Sem atividade registada hoje ainda.";
       const totalKm = todayRuns.reduce((s, a) => s + a.distanceKm, 0);
       const totalMin = Math.round(todayRuns.reduce((s, a) => s + a.durationSec, 0) / 60);
-      return `[TREINO DE HOJE JÁ REALIZADO — usa isto para ajustar a resposta]: ${todayRuns.length} atividade(s) hoje, ${totalKm.toFixed(1)}km em ${totalMin}min. ${
+      const startTime = todayRuns[0].startTimeLocal;
+      const timeStr = startTime ? ` às ${startTime}` : "";
+      return `[TREINO DE HOJE JÁ REALIZADO${timeStr} — REGRA: por defeito recomenda descanso ou recuperação passiva com justificação de carga; segunda sessão só se o utilizador pedir explicitamente]: ${todayRuns.length} atividade(s) hoje, ${totalKm.toFixed(1)}km em ${totalMin}min. ${
         todayRuns.length > 0 ? `Pace médio: ${todayRuns[0].paceMinPerKm?.toFixed(2) ?? "—"}min/km.` : ""
-      } Se o utilizador pergunta "que treino posso fazer hoje" DEPOIS de já ter treinado, reconhece isso explicitamente e adapta a recomendação (ex: recuperação activa, descanso, ou segundo treino leve se o TSB o permitir).`;
+      }`;
     })(),
     running ? `Volume últimos 7 dias (summarized, pode não incluir hoje): ${running.totalDistanceKm} km em ${running.runCount} corridas.` : "Sem dados de volume semanal.",
     goalBlock,
@@ -211,13 +214,30 @@ export async function POST(req: NextRequest) {
   const reply = fullReply.replace(/---ICU_WORKOUT---[\s\S]*?---ICU_END---/, "").trim();
 
   let icuWorkout: { name: string; description: string } | null = null;
+  let consistencyWarning: string | null = null;
   if (icuRaw) {
     const nameMatch = icuRaw.match(/<name>([\s\S]*?)<\/name>/);
     const descMatch = icuRaw.match(/<description>([\s\S]*?)<\/description>/);
     if (nameMatch && descMatch) {
       icuWorkout = { name: nameMatch[1].trim(), description: descMatch[1].trim() };
+      const consistency = checkIcuConsistency(reply, icuWorkout.description);
+      if (consistency.warning) {
+        consistencyWarning = consistency.warning;
+        console.log("[coach:consistency] WARN", {
+          warning: consistency.warning,
+          textDistanceKm: consistency.textDistanceKm,
+          icuDistanceKm: consistency.icuDistanceKm,
+          workoutName: icuWorkout.name,
+        });
+      } else if (consistency.unverifiable) {
+        console.log("[coach:consistency] UNVERIFIABLE", {
+          reason: "ICU tem distância explícita mas texto não menciona distância total",
+          icuDistanceKm: consistency.icuDistanceKm,
+          workoutName: icuWorkout.name,
+        });
+      }
     }
   }
 
-  return NextResponse.json({ reply, icuWorkout });
+  return NextResponse.json({ reply, icuWorkout, consistencyWarning });
 }

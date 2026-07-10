@@ -1473,7 +1473,7 @@ export class FreddyDataService {
   }
 
   async getRecentActivities(days = 30): Promise<
-    { date: string; distanceKm: number; durationSec: number; paceMinPerKm: number; elevationGainM: number | null }[]
+    { date: string; distanceKm: number; durationSec: number; paceMinPerKm: number; elevationGainM: number | null; startTimeLocal: string | null }[]
   > {
     if (!this.client.queryRawText) {
       throw new Error("Este client não implementa queryRawText — necessário para a lista de atividades.");
@@ -1485,8 +1485,9 @@ export class FreddyDataService {
     const distByDate = extractValuesByDate(text, RunActivityMetrics.distanceM);
     const durByDate = extractValuesByDate(text, RunActivityMetrics.durationSec);
     const elevByDate = extractValuesByDate(text, RunActivityMetrics.elevationGainM);
+    const timeByDate = extractFirstTimeByDate(text);
 
-    const out: { date: string; distanceKm: number; durationSec: number; paceMinPerKm: number; elevationGainM: number | null }[] = [];
+    const out: { date: string; distanceKm: number; durationSec: number; paceMinPerKm: number; elevationGainM: number | null; startTimeLocal: string | null }[] = [];
     for (const [date, distances] of distByDate) {
       const durations = durByDate.get(date) ?? [];
       const elevations = elevByDate.get(date) ?? [];
@@ -1498,6 +1499,7 @@ export class FreddyDataService {
           durationSec: durSec,
           paceMinPerKm: distM > 0 ? roundTo(durSec / 60 / (distM / 1000), 2) : 0,
           elevationGainM: elevations[i] ?? null,
+          startTimeLocal: i === 0 ? (timeByDate.get(date) ?? null) : null,
         });
       });
     }
@@ -1923,6 +1925,21 @@ async function fetchInQuarterlyChunks(
 
   const texts = await Promise.all(chunks.map(fetchChunkCached));
   return texts.join("\n");
+}
+
+/**
+ * Extrai a hora local (HH:MM) da primeira ocorrência de um cabeçalho
+ * "YYYY-MM-DDTHH:MM:" por data. Retorna apenas datas com tempo explícito.
+ */
+export function extractFirstTimeByDate(text: string): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const line of text.split("\n")) {
+    const m = line.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}):\s*$/);
+    if (m && !result.has(m[1])) {
+      result.set(m[1], m[2]);
+    }
+  }
+  return result;
 }
 
 /** Extrai valores escalares de uma métrica, agrupados por data (cabeçalho "YYYY-MM-DD:"). */
