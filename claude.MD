@@ -57,6 +57,12 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
 - [Certo] Segunda sessão no mesmo dia: defeito é descanso; hora do treino de
   hoje entra no contexto; factos ausentes do contexto não se afirmam (regra
   anti-confabulação no system prompt).
+- [Certo] Desvio de pace: paceDeviationLabel (workout-history.ts) calcula vs o
+  limite mais próximo do range (minSecPerKm se mais rápido, maxSecPerKm se mais
+  lento) e produz "Xs mais rápido/lento que o alvo" ou "dentro do alvo". Campo
+  legado paceVsTargetSecPerKm (vs ponto médio) ignorado no display — era ambíguo
+  (bug: "-23s/km" lido como défice de velocidade). Convenção: aritmética e
+  comparações de pace nunca são do Llama — modelo cita texto pré-formatado.
 
 - [Certo] Ramp rate (lib/analysis/training-stress.ts): consumido de wellness.rampRate
   (Intervals.icu, CTL/sem), NUNCA recalculado. Semáforo: <1.0 ok; 1.0-1.5 atenção;
@@ -73,7 +79,7 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   includeRaw na interface.
 
 ## Testes e CI
-- Vitest, 241 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
+- Vitest, 245 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
 - Fixtures REAIS em tests/fixtures/ — dados fisiológicos, .gitignore, NUNCA
   commitar. CI corre contra tests/fixtures-synthetic/ (estrutura real, valores falsos).
 - tools/capture-fixtures.ts recaptura output MCP real (npm run fixtures:capture, local).
