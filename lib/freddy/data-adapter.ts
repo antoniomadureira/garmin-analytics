@@ -236,11 +236,12 @@ export async function cachedQueryMetrics(args: QueryArgs): Promise<Record<string
  * suspeito para a página de performance lenta), o log diz os bytes —
  * decisão de compressão/chunking só depois de o log confirmar.
  */
-async function cachedQueryRawText(args: { metrics: string[]; days?: number; start?: string; end?: string }): Promise<string> {
+async function cachedQueryRawText(args: { metrics: string[]; days?: number; start?: string; end?: string; includeRaw?: boolean }): Promise<string> {
   const { start, end } = args.start
     ? { start: args.start, end: args.end ?? args.start }
     : daysToRange(args.days ?? 7);
-  const sigBase = [...args.metrics].sort().join(",") + `|${start}|${end}`;
+  // [Certo] includeRaw deve entrar na chave — raw vs não-raw têm formatos distintos
+  const sigBase = [...args.metrics].sort().join(",") + `|${start}|${end}${args.includeRaw ? "|raw" : ""}`;
   const key = `freddy:rawtext:v1:${createHash("sha1").update(sigBase).digest("hex").slice(0, 12)}`;
 
   try {
@@ -252,7 +253,9 @@ async function cachedQueryRawText(args: { metrics: string[]; days?: number; star
 
   const firstText = await withFreddyLimit(async () => {
     const client = await getFreddyClient();
-    const result = await client.callTool({ name: "query_metrics", arguments: { metrics: args.metrics, start, end } });
+    const mcpArgs: Record<string, unknown> = { metrics: args.metrics, start, end };
+    if (args.includeRaw) mcpArgs.include_raw = true;
+    const result = await client.callTool({ name: "query_metrics", arguments: mcpArgs });
     const content = (result as { content?: Array<{ type: string; text?: string }> }).content;
     const text = content?.find((c) => c.type === "text")?.text;
     if (!text) throw new Error("Resposta do query_metrics sem content de texto.");

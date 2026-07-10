@@ -98,6 +98,10 @@ const FIXTURES: Array<[string, ToolArgs]> = [
     },
   ],
   [
+    "icu-hr-zones",
+    { metrics: ["activity_icu_hr_zone_times"], days: 21, include_raw: true },
+  ],
+  [
     "no-data",
     { metrics: ["wellness_restingHR"], start: future, end: future },
   ],

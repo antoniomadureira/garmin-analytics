@@ -1,0 +1,55 @@
+Health data (last 21 days):
+
+2026-07-09:
+  activity_icu_hr_zone_times: 4415 seconds (Intervals.icu)
+    raw: {"zones":[870,1679,1611,222,33,0,0]}
+2026-07-07:
+  activity_icu_hr_zone_times: 5330 seconds (Intervals.icu)
+    raw: {"zones":[1292,1729,594,530,654,455,76]}
+2026-07-06:
+  activity_icu_hr_zone_times: 3472 seconds (Intervals.icu)
+    raw: {"zones":[1416,1115,821,120,0,0,0]}
+2026-07-05:
+  activity_icu_hr_zone_times: 2534 seconds (Intervals.icu)
+    raw: {"zones":[66,42,36,18,193,463,1716]}
+  activity_icu_hr_zone_times: 784 seconds (Intervals.icu)
+    raw: {"zones":[170,287,222,77,28,0,0]}
+2026-07-04:
+  activity_icu_hr_zone_times: 4207 seconds (Intervals.icu)
+    raw: {"zones":[201,286,1136,1758,545,232,49]}
+2026-07-02:
+  activity_icu_hr_zone_times: 4544 seconds (Intervals.icu)
+    raw: {"zones":[1749,2524,271,0,0,0,0]}
+2026-06-30:
+  activity_icu_hr_zone_times: 4166 seconds (Intervals.icu)
+    raw: {"zones":[2821,1270,53,22,0,0,0]}
+2026-06-29:
+  activity_icu_hr_zone_times: 4270 seconds (Intervals.icu)
+    raw: {"zones":[1278,1549,1294,133,16,0,0]}
+2026-06-28:
+  activity_icu_hr_zone_times: 4620 seconds (Intervals.icu)
+    raw: {"zones":[1685,1479,913,431,112,0,0]}
+2026-06-27:
+  activity_icu_hr_zone_times: 4243 seconds (Intervals.icu)
+    raw: {"zones":[2459,1228,548,8,0,0,0]}
+2026-06-26:
+  activity_icu_hr_zone_times: 5433 seconds (Intervals.icu)
+    raw: {"zones":[457,1320,1745,1875,36,0,0]}
+2026-06-24:
+  activity_icu_hr_zone_times: 4005 seconds (Intervals.icu)
+    raw: {"zones":[2458,1117,344,86,0,0,0]}
+2026-06-23:
+  activity_icu_hr_zone_times: 3256 seconds (Intervals.icu)
+    raw: {"zones":[533,1752,198,88,37,271,377]}
+2026-06-21:
+  activity_icu_hr_zone_times: 2407 seconds (Intervals.icu)
+    raw: {"zones":[13,4,33,108,16,55,2178]}
+  activity_icu_hr_zone_times: 210 seconds (Intervals.icu)
+    raw: {"zones":[33,97,62,18,0,0,0]}
+  activity_icu_hr_zone_times: 297 seconds (Intervals.icu)
+    raw: {"zones":[72,14,122,89,0,0,0]}
+  activity_icu_hr_zone_times: 145 seconds (Intervals.icu)
+    raw: {"zones":[29,13,6,15,30,52,0]}
+2026-06-20:
+  activity_icu_hr_zone_times: 7346 seconds (Intervals.icu)
+    raw: {"zones":[347,2481,3587,872,59,0,0]}

@@ -13,6 +13,7 @@ const REAL = path.join(process.cwd(), "tests/fixtures");
 
 const synthWellness = readFileSync(path.join(SYNTH, "wellness.txt"), "utf8");
 const synthNoData = readFileSync(path.join(SYNTH, "no-data.txt"), "utf8");
+const synthIcuHrZones = readFileSync(path.join(SYNTH, "icu-hr-zones.txt"), "utf8");
 
 const realExists = existsSync(path.join(REAL, "wellness.txt"));
 const realWellness = realExists ? readFileSync(path.join(REAL, "wellness.txt"), "utf8") : "";
@@ -94,41 +95,47 @@ function parserSuite(wellness: string, noData: string) {
 }
 
 // ─── extractIcuHrZonesByDate ──────────────────────────────────────────────────
+// Fixture sintética derivada de output MCP real (query_metrics, include_raw=true,
+// 21 dias, capturado em 2026-07-10). Formato: raw: {"zones":[Z0..Z6]} em segundos.
 
-describe("extractIcuHrZonesByDate", () => {
-  const SAMPLE = [
-    "2026-07-09:",
-    "  activity_icu_hr_zone_times: 4415 seconds (Intervals.icu)",
-    '    raw: {"zones":[870,1679,1611,222,33,0,0]}',
-    "2026-07-07:",
-    "  activity_icu_hr_zone_times: 5330 seconds (Intervals.icu)",
-    '    raw: {"zones":[1292,1729,594,530,654,455,76]}',
-    // dia com duas atividades
-    "2026-07-05:",
-    "  activity_icu_hr_zone_times: 2534 seconds (Intervals.icu)",
-    '    raw: {"zones":[66,42,36,18,193,463,1716]}',
-    "  activity_icu_hr_zone_times: 784 seconds (Intervals.icu)",
-    '    raw: {"zones":[170,287,222,77,28,0,0]}',
-  ].join("\n");
-
+describe("extractIcuHrZonesByDate — fixture sintética", () => {
   it("extrai zonas de atividade única por data", () => {
-    const map = extractIcuHrZonesByDate(SAMPLE);
+    const map = extractIcuHrZonesByDate(synthIcuHrZones);
     expect(map.get("2026-07-09")).toEqual([[870, 1679, 1611, 222, 33, 0, 0]]);
     expect(map.get("2026-07-07")).toEqual([[1292, 1729, 594, 530, 654, 455, 76]]);
   });
 
-  it("agrupa múltiplas atividades no mesmo dia em lista", () => {
-    const map = extractIcuHrZonesByDate(SAMPLE);
+  it("agrupa múltiplas atividades no mesmo dia (2026-07-05: 2 atividades)", () => {
+    const map = extractIcuHrZonesByDate(synthIcuHrZones);
     const day = map.get("2026-07-05");
     expect(day).toHaveLength(2);
     expect(day![0]).toEqual([66, 42, 36, 18, 193, 463, 1716]);
     expect(day![1]).toEqual([170, 287, 222, 77, 28, 0, 0]);
   });
 
+  it("dia com 4 atividades (2026-06-21: 4 entradas)", () => {
+    const map = extractIcuHrZonesByDate(synthIcuHrZones);
+    expect(map.get("2026-06-21")).toHaveLength(4);
+  });
+
+  it("devolve 15 datas distintas de 21 dias de dados", () => {
+    const map = extractIcuHrZonesByDate(synthIcuHrZones);
+    // 15 datas de treino em 21 dias (dias sem atividade não aparecem)
+    expect(map.size).toBe(15);
+  });
+});
+
+describe("extractIcuHrZonesByDate — casos limite", () => {
   it("ignora JSON malformado sem lançar erro", () => {
     const bad = "2026-07-01:\n  activity_icu_hr_zone_times: 100 seconds\n    raw: {bad json}\n";
     expect(() => extractIcuHrZonesByDate(bad)).not.toThrow();
     expect(extractIcuHrZonesByDate(bad).size).toBe(0);
+  });
+
+  it("texto sem bloco raw (queryRawText sem includeRaw) → mapa vazio", () => {
+    // Este é o caso da regressão: cachedQueryRawText sem include_raw → sem raw: block
+    const noRaw = "2026-07-09:\n  activity_icu_hr_zone_times: 4415 seconds (Intervals.icu)\n";
+    expect(extractIcuHrZonesByDate(noRaw).size).toBe(0);
   });
 
   it("texto vazio → mapa vazio", () => {
