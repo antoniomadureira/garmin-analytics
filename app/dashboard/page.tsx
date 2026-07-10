@@ -283,30 +283,38 @@ async function loadRaceGoalCard(
 
   // Garmin: aceitar só se fresco (<14d) — previsões Garmin têm atraso de sync
   if (service) {
+    const tG = performance.now();
     try {
       const pred = await service.getRacePredictions();
       const ageDays = Math.floor((Date.now() - new Date(`${pred.date}T00:00:00`).getTime()) / 86_400_000);
+      console.log(JSON.stringify({ evt: "dashboard:timer", loader: "raceGoal:garmin", ms: Math.round(performance.now() - tG), ageDays, stale: ageDays >= 14 }));
       if (ageDays < 14) {
         predictedSec = pred.timeMarathonSec;
         predictionDate = pred.date;
         predictionSource = "garmin";
         predictionSourceLabel = "Garmin";
       }
-    } catch { /* try Riegel */ }
+    } catch (e) {
+      console.log(JSON.stringify({ evt: "dashboard:timer", loader: "raceGoal:garmin", ms: Math.round(performance.now() - tG), err: String(e).slice(0, 80) }));
+    }
   }
 
   // Riegel fallback: melhor esforço recente (≤90 dias) em 10K/15K/HM
   if (predictedSec === null) {
+    const tR = performance.now();
     try {
       const records = await getCachedPersonalRecords();
       const riegel = selectRiegelInput(records);
+      console.log(JSON.stringify({ evt: "dashboard:timer", loader: "raceGoal:riegel", ms: Math.round(performance.now() - tR), records: records.length, found: !!riegel }));
       if (riegel) {
         predictedSec = riegel.predictedMarathonSec;
         predictionDate = riegel.sourceDate;
         predictionSource = "riegel";
         predictionSourceLabel = `Riegel/${riegel.sourceLabel}`;
       }
-    } catch { /* graceful */ }
+    } catch (e) {
+      console.log(JSON.stringify({ evt: "dashboard:timer", loader: "raceGoal:riegel", ms: Math.round(performance.now() - tR), err: String(e).slice(0, 80) }));
+    }
   }
 
   return {
@@ -429,12 +437,22 @@ export default async function DashboardPage() {
     source: geoSource,
   };
 
+  // Instrumentação de performance — remover depois de confirmar o loader lento
+  function tL<T>(name: string, p: Promise<T>): Promise<T> {
+    const t0 = performance.now();
+    return p.then(
+      (v) => { console.log(JSON.stringify({ evt: "dashboard:timer", loader: name, ms: Math.round(performance.now() - t0) })); return v; },
+      (e) => { console.log(JSON.stringify({ evt: "dashboard:timer", loader: name, ms: Math.round(performance.now() - t0), err: String(e).slice(0, 80) })); return Promise.reject(e as Error); },
+    );
+  }
+
+  const t_page = performance.now();
   const [[readinessResult, recoveryResult], trainingLoadResult, yoyResult, runningResult, weatherImpact, intensityResult, lastWorkoutResult, raceGoalResult] = await Promise.all([
-    loadReadinessAndRecovery(service, connectError),
-    loadTrainingLoad(service, connectError),
-    loadYoyKpis(service, connectError),
-    loadRunningSummary(service, connectError),
-    Promise.all([
+    tL("readinessAndRecovery", loadReadinessAndRecovery(service, connectError)),
+    tL("trainingLoad", loadTrainingLoad(service, connectError)),
+    tL("yoyKpis", loadYoyKpis(service, connectError)),
+    tL("runningSummary", loadRunningSummary(service, connectError)),
+    tL("weather", Promise.all([
       getTodayWeather(geo).catch(() => null),
       (resolvedLat && resolvedLon
         ? getAirQuality(resolvedLat, resolvedLon)
@@ -442,11 +460,12 @@ export default async function DashboardPage() {
       ).catch(() => null),
     ]).then(([w, aq]) =>
       w ? { ...classifyWeatherImpact(w, aq), tempNowC: w.tempNowC, tempMaxC: w.tempMaxC, aqi: aq?.europeanAqi ?? null } : null
-    ).catch(() => null),
-    loadRunningIntensity(service, connectError),
-    loadLastWorkout(service, connectError),
-    loadRaceGoalCard(service),
+    ).catch(() => null)),
+    tL("intensity", loadRunningIntensity(service, connectError)),
+    tL("lastWorkout", loadLastWorkout(service, connectError)),
+    tL("raceGoal", loadRaceGoalCard(service)),
   ]);
+  console.log(JSON.stringify({ evt: "dashboard:timer", loader: "TOTAL_Promise.all", ms: Math.round(performance.now() - t_page) }));
 
   // Fallback Strava: quando Freddy está completamente indisponível
   let stravaFallbackActivities: { id: string; name: string; date: string; distanceKm: number; durationSec: number }[] = [];
