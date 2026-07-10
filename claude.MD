@@ -77,9 +77,13 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   confirmada do "sem dados desde 15/6". Parser: extractIcuHrZonesByDate (exportado,
   testado). Formato lido com includeRaw:true; FreddyClient.queryRawText aceita
   includeRaw na interface.
+  REGRESSÃO CORRIGIDA (2026-07-10): cachedQueryRawText nunca passava include_raw
+  ao callTool — parser devolvia mapa vazio → zero barras. Fix: mcpArgs condicional +
+  "|raw" na chave de cache. Fixture sintética icu-hr-zones.txt derivada de MCP real.
+  Regra: parser para fonte nova só com fixture REAL capturada antes.
 
 ## Testes e CI
-- Vitest, 245 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
+- Vitest, 248 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
 - Fixtures REAIS em tests/fixtures/ — dados fisiológicos, .gitignore, NUNCA
   commitar. CI corre contra tests/fixtures-synthetic/ (estrutura real, valores falsos).
 - tools/capture-fixtures.ts recaptura output MCP real (npm run fixtures:capture, local).
