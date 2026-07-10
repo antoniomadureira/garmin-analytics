@@ -58,8 +58,16 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   hoje entra no contexto; factos ausentes do contexto não se afirmam (regra
   anti-confabulação no system prompt).
 
+- [Certo] Ramp rate (lib/analysis/training-stress.ts): consumido de wellness.rampRate
+  (Intervals.icu, CTL/sem), NUNCA recalculado. Semáforo: <1.0 ok; 1.0-1.5 atenção;
+  ≥1.5 sustentado 2+ semanas → alerta (verifica weekAgo com Date.UTC para evitar
+  drift de timezone). Monotonia Foster: média/std de ATL últimos 7 dias (proxy —
+  [Suposição] ATL como carga diária); >2.0 atenção, >2.5 alerta; <4 dias ATL>0 →
+  lowData, sem veredicto. Integrado no card de carga (sem ruído verde), no contexto
+  do coach ([CARGA — ...]) e nos testes.
+
 ## Testes e CI
-- Vitest, 77 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
+- Vitest, 237 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
 - Fixtures REAIS em tests/fixtures/ — dados fisiológicos, .gitignore, NUNCA
   commitar. CI corre contra tests/fixtures-synthetic/ (estrutura real, valores falsos).
 - tools/capture-fixtures.ts recaptura output MCP real (npm run fixtures:capture, local).
@@ -75,13 +83,14 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
 - Composto de readiness: evoluir comparação de HRV para média 7d vs baseline 30-60d
   (uma noite vs média é ruidoso). Iteração, não bug.
 - Split de lib/freddy/metrics.ts (ainda ~2000 linhas) em módulos.
-
+- Rótulo do card HRV → "HRV (última noite)" (confusão real com o HRV Status 7d do Garmin — pedido 3x, 
+nunca confirmado em diff).
 
 ## Roadmap
 - Feitos: 1 (cache), 2 (limpeza), 3 (testes+CI), 4 (auth), 5+7 (memória do coach
   prescrito vs executado, decoupling, guardrails, formato 📊 validado em produção),
-  6 (80/20 semanal), 8 (objetivo de prova + card Rumo ao sub-3h), card Último
-  Treino, consistência ICU, fixes de localização/AQI/HRV/TSB/pace harmónico.
-- EM CURSO: 9 (ramp rate + monotony/strain com alertas) — prompt acordado no chat.
+  6 (80/20 semanal), 8 (objetivo de prova + card Rumo ao sub-3h), 9 (ramp rate +
+  monotony/strain), card Último Treino, consistência ICU, fixes de
+  localização/AQI/HRV/TSB/pace harmónico.
 - Depois: 10 (modelo p/ prescrição), 11 (encriptar tokens + LICENSE + template OSS),
   12 (hipnograma, race readiness 12 semanas).

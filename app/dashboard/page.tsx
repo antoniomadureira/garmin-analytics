@@ -13,6 +13,7 @@ import { LastWorkoutCard } from "@/components/dashboard/last-workout-card";
 import { RaceGoalCard, type RaceGoalCardData } from "@/components/dashboard/race-goal-card";
 import { getLastActivityDate } from "@/lib/utils/activity";
 import { getDecisionWellness } from "@/lib/utils/wellness";
+import { computeWeeklyStressMetrics } from "@/lib/analysis/training-stress";
 import { loadGoal, weeksRemaining, cyclePhase } from "@/lib/coach/goal-store";
 import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
 import { ReadinessHero } from "@/components/dashboard/readiness-hero";
@@ -147,6 +148,12 @@ async function loadTrainingLoad(service: Awaited<ReturnType<typeof getFreddyData
       ctl: 45 + i * 0.6,
       atl: 38 + Math.round(Math.sin(i) * 8),
     })),
+    rampRate: null,
+    rampRateStatus: null,
+    monotony: null,
+    monotonyStatus: null,
+    strain: null,
+    stressLowData: false,
   };
   if (!service) return { data: mock, isReal: false, error: connectError };
   try {
@@ -161,16 +168,24 @@ async function loadTrainingLoad(service: Awaited<ReturnType<typeof getFreddyData
     const latestWellness = getDecisionWellness(wellness, todayStr);
     if (!latestWellness) throw new Error("Sem registo de wellness (Intervals.icu) no período pedido.");
 
+    const stress = computeWeeklyStressMetrics(wellness, todayStr);
+
     return {
       data: {
         vo2Max: vo2?.canonicalValue ?? mock.vo2Max,
-        trainingStatusLabel: load?.trainingStatus || mock.trainingStatusLabel, // [TODO] trainingStatus vazio até confirmar trainingHistory_* isolado
+        trainingStatusLabel: load?.trainingStatus || mock.trainingStatusLabel,
         ctl: latestWellness.ctl,
         atl: latestWellness.atl,
         tsb: latestWellness.tsb,
         history: wellness
           .filter((w) => w.ctl !== null && w.atl !== null)
           .map((w) => ({ date: w.date.slice(5), ctl: w.ctl as number, atl: w.atl as number })),
+        rampRate: stress.rampRate.current,
+        rampRateStatus: stress.rampRate.status,
+        monotony: stress.monotony.monotony,
+        monotonyStatus: stress.monotony.status,
+        strain: stress.monotony.strain,
+        stressLowData: stress.monotony.lowData,
       },
       isReal: true,
     };

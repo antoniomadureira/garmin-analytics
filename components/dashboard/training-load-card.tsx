@@ -2,7 +2,8 @@
 
 import { Card, CardTitle } from "@/components/ui/card";
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, AlertTriangle, Info } from "lucide-react";
+import type { StressLevel } from "@/lib/analysis/training-stress";
 
 export interface TrainingLoadPoint {
   date: string; // dd/mm
@@ -17,6 +18,12 @@ export interface TrainingLoadCardData {
   atl: number | null;
   tsb: number | null;
   history: TrainingLoadPoint[];
+  rampRate: number | null;
+  rampRateStatus: StressLevel | null;
+  monotony: number | null;
+  monotonyStatus: StressLevel | null;
+  strain: number | null;
+  stressLowData: boolean;
 }
 
 const TRAINING_STATUS_LABEL_PT: Record<string, string> = {
@@ -109,6 +116,26 @@ function MetricWithTrend({ label, value, delta, color }: {
   );
 }
 
+const STRESS_COLORS: Record<StressLevel, string> = {
+  ok: "#34d399",
+  attention: "#fbbf24",
+  alert: "#f87171",
+};
+
+function StressPill({ status, label }: { status: StressLevel; label: string }) {
+  const color = STRESS_COLORS[status];
+  const Icon = status === "alert" ? AlertTriangle : Info;
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium"
+      style={{ color, backgroundColor: `${color}18`, border: `1px solid ${color}40` }}
+    >
+      <Icon size={9} />
+      {label}
+    </span>
+  );
+}
+
 export function TrainingLoadCard({ data }: { data: TrainingLoadCardData }) {
   const statusLabel = TRAINING_STATUS_LABEL_PT[data.trainingStatusLabel] ?? data.trainingStatusLabel;
 
@@ -171,7 +198,45 @@ export function TrainingLoadCard({ data }: { data: TrainingLoadCardData }) {
           </div>
         )}
 
-        {/* 4. VO2 Max + estado Garmin — informação de rodapé, não protagonista */}
+        {/* 4. Ramp rate + Monotonia — só quando em atenção/alerta (sem ruído verde) */}
+        {(data.rampRateStatus === "attention" || data.rampRateStatus === "alert" ||
+          (!data.stressLowData && (data.monotonyStatus === "attention" || data.monotonyStatus === "alert"))) && (
+          <div className="space-y-1.5 border-t border-slate-800 pt-3">
+            {(data.rampRateStatus === "attention" || data.rampRateStatus === "alert") && (
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-500">Progressão semanal (ramp)</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[11px] text-slate-300">
+                    {data.rampRate !== null ? `${data.rampRate.toFixed(2)} CTL/sem` : "—"}
+                  </span>
+                  <StressPill
+                    status={data.rampRateStatus}
+                    label={data.rampRateStatus === "alert" ? "Alerta" : "Atenção"}
+                  />
+                </div>
+              </div>
+            )}
+            {!data.stressLowData && (data.monotonyStatus === "attention" || data.monotonyStatus === "alert") && (
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-500">
+                  Monotonia · Strain
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[11px] text-slate-300">
+                    {data.monotony !== null ? data.monotony.toFixed(2) : "—"}
+                    {data.strain !== null ? ` · ${data.strain.toFixed(0)}` : ""}
+                  </span>
+                  <StressPill
+                    status={data.monotonyStatus!}
+                    label={data.monotonyStatus === "alert" ? "Alerta" : "Atenção"}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 5. VO2 Max + estado Garmin — informação de rodapé, não protagonista */}
         <div className="flex items-center justify-between border-t border-slate-800 pt-2 text-xs">
           <span className="text-slate-500">
             VO2 Max <span className="font-medium text-slate-300">{data.vo2Max}</span>

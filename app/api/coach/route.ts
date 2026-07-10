@@ -9,6 +9,7 @@ import { formatWorkoutHistory, secPerKmToMinSec } from "@/lib/coach/workout-hist
 import { loadGoal, formatGoalContext } from "@/lib/coach/goal-store";
 import { SYSTEM_PROMPT_BASE } from "@/lib/coach/system-prompt";
 import { checkIcuConsistency } from "@/lib/coach/icu-consistency";
+import { computeWeeklyStressMetrics, formatStressContext } from "@/lib/analysis/training-stress";
 import type { PrescribedWorkout, WorkoutExecution } from "@/lib/types/coach";
 import { getDecisionWellness } from "@/lib/utils/wellness";
 
@@ -103,9 +104,11 @@ async function buildContextSummary(geo?: GeoHint, messages: ChatMessage[] = []):
   // Workout history block (built before logging so we can log it exactly as injected)
   const historyBlock = formatWorkoutHistory(workoutHistory, isPrescriptionRequest);
   const goalBlock = goal ? formatGoalContext(goal, todayStr) : "";
+  const stressBlock = formatStressContext(computeWeeklyStressMetrics(wellness, todayStr));
 
   // Permanent instrumentation — visible in Vercel Function logs
   if (goalBlock) console.log("[coach:goal]", goalBlock);
+  if (stressBlock) console.log("[coach:stress]", stressBlock);
   if (historyBlock) console.log("[coach:history]", historyBlock);
 
   return [
@@ -147,6 +150,7 @@ async function buildContextSummary(geo?: GeoHint, messages: ChatMessage[] = []):
       }`;
     })(),
     running ? `Volume últimos 7 dias (summarized, pode não incluir hoje): ${running.totalDistanceKm} km em ${running.runCount} corridas.` : "Sem dados de volume semanal.",
+    stressBlock,
     goalBlock,
     historyBlock,
   ]
