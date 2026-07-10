@@ -15,6 +15,8 @@ import { getLastActivityDate } from "@/lib/utils/activity";
 import { getDecisionWellness } from "@/lib/utils/wellness";
 import { computeWeeklyStressMetrics } from "@/lib/analysis/training-stress";
 import { loadGoal, weeksRemaining, cyclePhase } from "@/lib/coach/goal-store";
+import { getCachedPersonalRecords } from "@/lib/strava-lab/records-cache";
+import { selectRiegelInput } from "@/lib/analysis/race-prediction";
 import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
 import { ReadinessHero } from "@/components/dashboard/readiness-hero";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
@@ -276,18 +278,41 @@ async function loadRaceGoalCard(
 
   let predictedSec: number | null = null;
   let predictionDate: string | null = null;
+  let predictionSource: "garmin" | "riegel" | null = null;
+  let predictionSourceLabel: string | null = null;
+
+  // Garmin: aceitar só se fresco (<14d) — previsões Garmin têm atraso de sync
   if (service) {
     try {
       const pred = await service.getRacePredictions();
-      predictedSec = pred.timeMarathonSec;
-      predictionDate = pred.date;
-    } catch { /* graceful — previsão indisponível */ }
+      const ageDays = Math.floor((Date.now() - new Date(`${pred.date}T00:00:00`).getTime()) / 86_400_000);
+      if (ageDays < 14) {
+        predictedSec = pred.timeMarathonSec;
+        predictionDate = pred.date;
+        predictionSource = "garmin";
+        predictionSourceLabel = "Garmin";
+      }
+    } catch { /* try Riegel */ }
+  }
+
+  // Riegel fallback: melhor esforço recente (≤90 dias) em 10K/15K/HM
+  if (predictedSec === null) {
+    try {
+      const records = await getCachedPersonalRecords();
+      const riegel = selectRiegelInput(records);
+      if (riegel) {
+        predictedSec = riegel.predictedMarathonSec;
+        predictionDate = riegel.sourceDate;
+        predictionSource = "riegel";
+        predictionSourceLabel = `Riegel/${riegel.sourceLabel}`;
+      }
+    } catch { /* graceful */ }
   }
 
   return {
-    data: { raceName: goal.race, raceDate: goal.date, weeksLeft, phase, targetSec, predictedSec, predictionDate },
+    data: { raceName: goal.race, raceDate: goal.date, weeksLeft, phase, targetSec, predictedSec, predictionDate, predictionSource, predictionSourceLabel },
     isReal: predictedSec !== null,
-    error: !service ? "Freddy indisponível" : predictedSec === null ? "Sem previsão Garmin" : undefined,
+    error: predictedSec === null ? (service ? "Sem dados recentes (10K/15K/HM nos últimos 90d)" : "Freddy indisponível") : undefined,
   };
 }
 

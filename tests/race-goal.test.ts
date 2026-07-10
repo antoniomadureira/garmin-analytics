@@ -6,6 +6,7 @@ import {
   deltaSeverity,
   formatMarathonTime,
 } from "@/lib/coach/goal-store";
+import { riegelMarathon, selectRiegelInput } from "@/lib/analysis/race-prediction";
 
 describe("weeksRemaining", () => {
   const RACE = "2026-10-10";
@@ -77,5 +78,90 @@ describe("formatMarathonTime", () => {
   it("11223s → 3:07:03", () => {
     // 3h7m3s = 3*3600 + 7*60 + 3 = 10800 + 420 + 3 = 11223
     expect(formatMarathonTime(11223)).toBe("3:07:03");
+  });
+});
+
+// ─── Riegel ───────────────────────────────────────────────────────────────────
+
+describe("riegelMarathon", () => {
+  it("39:30 no 10K → previsão ~3:02 (entre 3:00 e 3:05)", () => {
+    const result = riegelMarathon(10, 2370); // 39:30 = 2370s
+    expect(result).toBeGreaterThanOrEqual(10800); // ≥ 3:00:00
+    expect(result).toBeLessThan(11100);            // < 3:05:00
+  });
+
+  it("distância igual à maratona → devolve a própria duração", () => {
+    // T2 = T1 × (42.195/42.195)^1.06 = T1 × 1 = T1
+    expect(riegelMarathon(42.195, 10800)).toBe(10800);
+  });
+
+  it("esforço mais longo prediz maratona mais rápida (mesmo pace)", () => {
+    // HM a pace 4:15/km: 21.0975 × 255 ≈ 5380s
+    const fromHm = riegelMarathon(21.0975, 5380);
+    // 10K ao mesmo pace: 10 × 255 = 2550s
+    const from10k = riegelMarathon(10, 2550);
+    // Riegel não é pace-linear — HM prediz maratona mais rápida
+    expect(fromHm).toBeLessThan(from10k);
+  });
+});
+
+describe("selectRiegelInput", () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const recent = (daysAgo: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    return d.toISOString().slice(0, 10);
+  };
+
+  it("HM recente → usa HM (label=HM)", () => {
+    const result = selectRiegelInput([{ distanceKm: 21.0975, durationSec: 5400, date: recent(10) }]);
+    expect(result?.sourceLabel).toBe("HM");
+  });
+
+  it("prefere HM a 10K quando ambos disponíveis", () => {
+    const result = selectRiegelInput([
+      { distanceKm: 10, durationSec: 2370, date: recent(5) },
+      { distanceKm: 21.0975, durationSec: 5400, date: recent(10) },
+    ]);
+    expect(result?.sourceLabel).toBe("HM");
+  });
+
+  it("sem HM recente cai para 15K", () => {
+    const result = selectRiegelInput([{ distanceKm: 15, durationSec: 3600, date: recent(20) }]);
+    expect(result?.sourceLabel).toBe("15K");
+  });
+
+  it("sem HM nem 15K cai para 10K", () => {
+    const result = selectRiegelInput([{ distanceKm: 10, durationSec: 2370, date: recent(30) }]);
+    expect(result?.sourceLabel).toBe("10K");
+    expect(result?.predictedMarathonSec).toBeGreaterThan(10800);
+  });
+
+  it("registo fora da janela de 90 dias → null", () => {
+    const result = selectRiegelInput([{ distanceKm: 10, durationSec: 2370, date: recent(91) }]);
+    expect(result).toBeNull();
+  });
+
+  it("lista vazia → null", () => {
+    expect(selectRiegelInput([])).toBeNull();
+  });
+
+  it("escolhe o mais rápido quando há dois 10K recentes", () => {
+    const result = selectRiegelInput([
+      { distanceKm: 10, durationSec: 2500, date: recent(10) },
+      { distanceKm: 10, durationSec: 2370, date: recent(5) }, // mais rápido
+    ]);
+    expect(result?.predictedMarathonSec).toBe(riegelMarathon(10, 2370));
+  });
+
+  it("inclui sourceDate do esforço selecionado", () => {
+    const d = recent(15);
+    const result = selectRiegelInput([{ distanceKm: 10, durationSec: 2370, date: d }]);
+    expect(result?.sourceDate).toBe(d);
+  });
+
+  it("hoje está dentro da janela (edge: 0 dias atrás)", () => {
+    const result = selectRiegelInput([{ distanceKm: 10, durationSec: 2370, date: today }]);
+    expect(result).not.toBeNull();
   });
 });

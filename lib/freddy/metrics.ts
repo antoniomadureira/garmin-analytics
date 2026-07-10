@@ -470,19 +470,37 @@ export class FreddyDataService {
   }
 
   /**
-   * [Certo] Confirmado: racePredictions_* tem o mesmo atraso de
-   * sincronização do Training Readiness (último registo visto a vários
-   * dias do "hoje" real). Pedir só `days: 1` ("hoje") devolvia
-   * sistematicamente "No data found" — corrigido para uma janela maior,
-   * escolhendo o registo mais recente disponível dentro dela.
+   * [Certo] racePredictions_* são escalares sem bloco raw: — usar
+   * queryRawText + extractValuesByDate, NÃO queryMetrics+parseQueryMetricsText
+   * (este último só lê raw: e devolvia {} para estas métricas).
+   * Lag confirmado: último registo em 2026-06-21 quando hoje é 2026-07-10
+   * (19 dias). days: 30 cobre o lag observado; loadRaceGoalCard filtra
+   * por frescura (<14d) antes de preferir Garmin ao Riegel.
    */
   async getRacePredictions(): Promise<RacePredictionSummary> {
-    const raw = await this.client.queryMetrics({
+    if (!this.client.queryRawText) {
+      throw new Error("queryRawText não disponível — necessário para race predictions.");
+    }
+    const text = await this.client.queryRawText({
       metrics: Object.values(RacePredictionMetrics),
-      days: 10,
-      includeRaw: true,
+      days: 30,
     });
-    return mapToRacePrediction(raw);
+    const marathonByDate = extractValuesByDate(text, RacePredictionMetrics.timeMarathon);
+    const halfByDate = extractValuesByDate(text, RacePredictionMetrics.timeHalf);
+    const tenKByDate = extractValuesByDate(text, RacePredictionMetrics.time10k);
+    const fiveKByDate = extractValuesByDate(text, RacePredictionMetrics.time5k);
+
+    const dates = [...marathonByDate.keys()].sort();
+    const latest = dates[dates.length - 1];
+    if (!latest) throw new Error("Sem dados de race predictions nos últimos 30 dias.");
+
+    return {
+      date: latest,
+      time5kSec: fiveKByDate.get(latest)?.[0] ?? 0,
+      time10kSec: tenKByDate.get(latest)?.[0] ?? 0,
+      timeHalfSec: halfByDate.get(latest)?.[0] ?? 0,
+      timeMarathonSec: marathonByDate.get(latest)?.[0] ?? 0,
+    };
   }
 
   async getRecoverySummary(days = 7): Promise<RecoverySummary[]> {
@@ -1752,27 +1770,6 @@ function mapToVo2Max(raw: Record<string, unknown>): Vo2MaxSummary[] {
     biometricValue: null,
     hasDiscrepancy: false, // sem as outras 3 fontes, não há nada para comparar ainda
   }));
-}
-/** Shape real confirmado — todos os 4 tempos vêm juntos num único registo. */
-interface RacePredictionRaw {
-  raceTime5K: number;
-  raceTime10K: number;
-  raceTimeHalf: number;
-  raceTimeMarathon: number;
-  calendarDate: string;
-}
-
-function mapToRacePrediction(raw: Record<string, unknown>): RacePredictionSummary {
-  const entries = Object.values(raw) as RacePredictionRaw[];
-  const latest = entries[entries.length - 1]; // [Suposição] assume ordem cronológica; confirmar se vier diferente
-  if (!latest) throw new Error("Sem dados de race predictions no período pedido.");
-  return {
-    date: latest.calendarDate,
-    time5kSec: latest.raceTime5K,
-    time10kSec: latest.raceTime10K,
-    timeHalfSec: latest.raceTimeHalf,
-    timeMarathonSec: latest.raceTimeMarathon,
-  };
 }
 
 /**

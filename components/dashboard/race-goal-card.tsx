@@ -9,6 +9,8 @@ export interface RaceGoalCardData {
   targetSec: number;
   predictedSec: number | null;
   predictionDate: string | null;
+  predictionSource: "garmin" | "riegel" | null;
+  predictionSourceLabel: string | null; // "Garmin", "Riegel/HM", "Riegel/15K", "Riegel/10K"
 }
 
 interface RaceGoalCardProps {
@@ -36,7 +38,7 @@ const DELTA_CLASS: Record<"green" | "amber" | "red", string> = {
 };
 
 export function RaceGoalCard({ data, isReal, error }: RaceGoalCardProps) {
-  const { raceName, raceDate, weeksLeft, phase, targetSec, predictedSec, predictionDate } = data;
+  const { raceName, raceDate, weeksLeft, phase, targetSec, predictedSec, predictionDate, predictionSourceLabel } = data;
 
   const delta = predictedSec !== null ? predictedSec - targetSec : null;
   const severity = delta !== null ? deltaSeverity(delta) : null;
@@ -46,6 +48,16 @@ export function RaceGoalCard({ data, isReal, error }: RaceGoalCardProps) {
     month: "short",
     year: "numeric",
   });
+
+  const footerText = (() => {
+    if (predictedSec === null) return "Sem dados para previsão";
+    if (!predictionDate || !predictionSourceLabel) return "";
+    const datePt = new Date(`${predictionDate}T00:00:00`).toLocaleDateString("pt-PT", {
+      day: "numeric",
+      month: "short",
+    });
+    return `${predictionSourceLabel} · ${datePt}`;
+  })();
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
@@ -71,6 +83,11 @@ export function RaceGoalCard({ data, isReal, error }: RaceGoalCardProps) {
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-400">Previsão</span>
           <div className="flex items-center gap-2">
+            {predictionSourceLabel && (
+              <span className="rounded px-1 py-0.5 text-[10px] font-medium bg-slate-800 text-slate-400">
+                {predictionSourceLabel}
+              </span>
+            )}
             <span className="font-mono text-sm font-medium text-slate-200">
               {predictedSec !== null ? formatMarathonTime(predictedSec) : "—"}
             </span>
@@ -83,15 +100,13 @@ export function RaceGoalCard({ data, isReal, error }: RaceGoalCardProps) {
         </div>
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-400">Objetivo</span>
-          <span className="font-mono text-sm text-slate-500">{formatMarathonTime(targetSec)}</span>
+          <span className="font-mono text-sm font-medium text-slate-200">{formatMarathonTime(targetSec)}</span>
         </div>
       </div>
 
       {/* Footer */}
       <div className="mt-3 flex items-center justify-between">
-        <p className="text-[10px] text-slate-600">
-          {predictionDate ? `Previsão Garmin de ${predictionDate}` : predictedSec === null ? "Sem previsão Garmin disponível" : ""}
-        </p>
+        <p className="text-[10px] text-slate-600">{footerText}</p>
         <DataFreshnessDot isReal={isReal} error={error} />
       </div>
     </div>
