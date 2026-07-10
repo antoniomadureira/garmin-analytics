@@ -130,12 +130,20 @@ export function computeWeeklyStressMetrics(
   const weekAgoEntry = sorted.find((w) => w.date <= weekAgoDate);
   const weekAgoRampRate = weekAgoEntry?.rampRate ?? null;
 
-  // ── Monotonia: últimos 7 dias de ATL ──────────────────────────────────────
-  const last7 = sorted.slice(0, 7);
-  // Rest days (ATL null) contam como 0 — é o que baixa a monotonia
-  const atlValues = last7.map((w) => w.atl ?? 0);
+  // ── Monotonia: carga diária via inverso EWMA de ATL ──────────────────────
+  // ATL (k=7): ATL(t) = ATL(t-1)×(6/7) + L(t)×(1/7)
+  // Inverso:   L(t)   = 7×(ATL(t) − ATL(t-1)×(6/7)), clamped ≥0.
+  // Usar ATL diretamente dava monotonia impossível (10+): o EWMA suaviza os
+  // dias de descanso (ATL cai 1/7 em vez de ir a 0) → variância mínima.
+  // Com o inverso EWMA, dias de descanso produzem L=0 e o Foster funciona.
+  const last8 = sorted.slice(0, 8);
+  const atlWith8 = last8.map((w) => w.atl ?? 0);
+  const dailyLoads = atlWith8.slice(0, 7).map((atl_t, i) => {
+    const atl_prev = i + 1 < atlWith8.length ? atlWith8[i + 1] : 0;
+    return Math.max(0, Math.round(7 * (atl_t - atl_prev * (6 / 7))));
+  });
 
-  const { monotony, strain, weeklyAtlSum, lowData } = computeMonotony(atlValues);
+  const { monotony, strain, weeklyAtlSum, lowData } = computeMonotony(dailyLoads);
 
   return {
     rampRate: {

@@ -138,6 +138,9 @@ describe("monotonyStatusLevel", () => {
 const TODAY = "2026-07-10";
 
 // ─── computeWeeklyStressMetrics ───────────────────────────────────────────────
+// Nota: os testes de computeMonotony acima recebem cargas diárias explícitas.
+// Os testes de computeWeeklyStressMetrics validam que a conversão ATL→carga
+// está correta — o inverso EWMA deve recuperar zeros nos dias de descanso.
 
 describe("computeWeeklyStressMetrics", () => {
 
@@ -174,6 +177,31 @@ describe("computeWeeklyStressMetrics", () => {
     const result = computeWeeklyStressMetrics(wellness, TODAY);
     expect(result.rampRate.current).toBe(0.5);
     expect(result.rampRate.status).toBe("ok");
+  });
+
+  it("semana 3×descanso+4×treino: inverso EWMA → monotonia <3 (fix da regressão 10+)", () => {
+    // ATL calculado de loads [0,80,0,90,80,75,0] com ATL_prev=40 (sorted desc):
+    //   day6(rest)=42.62, day5(run80)=49.72, day4(rest)=44.68,
+    //   day3(run90)=52.12, day2(run80)=45.80, day1(run75)=40.10, day0(rest)=34.29
+    //   prev=40.00 (para inverso EWMA de day0)
+    // Com ATL direto: mean≈44, std≈5, monotonia≈8 (falso alerta)
+    // Com inverso EWMA: loads=[0,80,0,90,80,75,0], monotonia≈1.1 (correto)
+    const wellness = [
+      ...makeWellness([
+        { date: "2026-07-09", atl: 42.62 },
+        { date: "2026-07-08", atl: 49.72 },
+        { date: "2026-07-07", atl: 44.68 },
+        { date: "2026-07-06", atl: 52.12 },
+        { date: "2026-07-05", atl: 45.80 },
+        { date: "2026-07-04", atl: 40.10 },
+        { date: "2026-07-03", atl: 34.29 },
+        { date: "2026-07-02", atl: 40.00 }, // entrada anterior à janela (para inverso EWMA do dia 0)
+      ]),
+    ];
+    const result = computeWeeklyStressMetrics(wellness, TODAY);
+    expect(result.monotony.lowData).toBe(false); // 4 dias com carga > 0
+    expect(result.monotony.monotony).not.toBeNull();
+    expect(result.monotony.monotony!).toBeLessThan(3.0);
   });
 });
 

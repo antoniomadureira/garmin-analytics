@@ -1,24 +1,12 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import { formatMarathonTime, formatTimeDelta, deltaSeverity } from "@/lib/coach/goal-store";
 import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
+import type { RaceGoalCardData } from "@/lib/types/race-goal";
 
-export interface RaceGoalCardData {
-  raceName: string;
-  raceDate: string;
-  weeksLeft: number;
-  phase: "base" | "especifico" | "taper";
-  targetSec: number;
-  predictedSec: number | null;
-  predictionDate: string | null;
-  predictionSource: "garmin" | "riegel" | null;
-  predictionSourceLabel: string | null; // "Garmin", "Riegel/HM", "Riegel/10K", "Riegel/5K"
-  predictionStale?: boolean;            // Riegel source > 70d — can show warning in footer
-}
-
-interface RaceGoalCardProps {
-  data: RaceGoalCardData;
-  isReal: boolean;
-  error?: string;
-}
+// re-export so page.tsx can still import the type without breaking
+export type { RaceGoalCardData };
 
 const PHASE_LABEL: Record<RaceGoalCardData["phase"], string> = {
   base: "Base",
@@ -38,7 +26,7 @@ const DELTA_CLASS: Record<"green" | "amber" | "red", string> = {
   red: "text-red-400",
 };
 
-export function RaceGoalCard({ data, isReal, error }: RaceGoalCardProps) {
+function RaceGoalCardInner({ data, isReal, error }: { data: RaceGoalCardData; isReal: boolean; error?: string }) {
   const { raceName, raceDate, weeksLeft, phase, targetSec, predictedSec, predictionDate, predictionSourceLabel, predictionStale } = data;
 
   const delta = predictedSec !== null ? predictedSec - targetSec : null;
@@ -63,7 +51,6 @@ export function RaceGoalCard({ data, isReal, error }: RaceGoalCardProps) {
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-      {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-slate-100">🎯 Rumo ao sub-3h</h2>
@@ -80,7 +67,6 @@ export function RaceGoalCard({ data, isReal, error }: RaceGoalCardProps) {
 
       <p className="mt-1.5 text-xs text-slate-500">{weeksLeft} semanas restantes</p>
 
-      {/* Prediction vs target */}
       <div className="mt-3 space-y-1.5">
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-400">Previsão</span>
@@ -106,11 +92,32 @@ export function RaceGoalCard({ data, isReal, error }: RaceGoalCardProps) {
         </div>
       </div>
 
-      {/* Footer */}
       <div className="mt-3 flex items-center justify-between">
         <p className="text-[10px] text-slate-600">{footerText}</p>
         <DataFreshnessDot isReal={isReal} error={error} />
       </div>
     </div>
   );
+}
+
+export function RaceGoalCard() {
+  const [state, setState] = useState<
+    { data: RaceGoalCardData; isReal: boolean; error?: string } | null | "loading"
+  >("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/dashboard/race-goal")
+      .then((r) => r.json())
+      .then((json) => { if (!cancelled) setState(json.data ? json : null); })
+      .catch(() => { if (!cancelled) setState(null); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (state === "loading") {
+    return <div className="animate-pulse rounded-2xl border border-slate-800 bg-slate-900/40 h-28" />;
+  }
+  if (!state || !state.data) return null;
+
+  return <RaceGoalCardInner data={state.data} isReal={state.isReal} error={state.error} />;
 }

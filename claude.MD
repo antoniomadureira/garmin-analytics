@@ -66,18 +66,24 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
 
 - [Certo] Previsao de maratona (card Rumo ao sub-3h): Garmin se fresco (<14d);
   Riegel (lib/analysis/race-prediction.ts, T2=T1*(D2/D1)^1.06) sobre melhor
-  esforco Strava <=90d em HM>15K>10K, caso contrario. Badge de fonte no card.
+  esforco Freddy <=70d em HM>10K>5K, caso contrario (180d com aviso no footer).
   getRacePredictions REESCRITO (2026-07-10): usava parseQueryMetricsText (so
   le raw:) — race predictions sao escalares sem raw:, logo devolvia {} sempre.
   Fix: queryRawText + extractValuesByDate. Lag Garmin confirmado: 19 dias.
-  days:30 cobre o lag; check de frescura (<14d) em loadRaceGoalCard.
+  days:30 cobre o lag; check de frescura (<14d) na API route.
+  Riegel usa FreddyDataService.getPersonalRecords(180) (data = data da corrida
+  real, nao PR all-time); strava-lab /records removido do dashboard render.
+  Card e API route: app/api/dashboard/race-goal/route.ts (client-side fetch).
+  CANDIDATES: HM>10K>5K (15K removido — nao coberto pelo Freddy).
+  getCachedPersonalRecords: TTL 24h adicionado aos kv.set.
 - [Certo] Ramp rate (lib/analysis/training-stress.ts): consumido de wellness.rampRate
   (Intervals.icu, CTL/sem), NUNCA recalculado. Semáforo: <1.0 ok; 1.0-1.5 atenção;
   ≥1.5 sustentado 2+ semanas → alerta (verifica weekAgo com Date.UTC para evitar
-  drift de timezone). Monotonia Foster: média/std de ATL últimos 7 dias (proxy —
-  [Suposição] ATL como carga diária); >2.0 atenção, >2.5 alerta; <4 dias ATL>0 →
-  lowData, sem veredicto. Integrado no card de carga (sem ruído verde), no contexto
-  do coach ([CARGA — ...]) e nos testes.
+  drift de timezone). Monotonia Foster: CORRIGIDA (2026-07-11) — usava ATL EWMA
+  direto (variância mínima → monotonia 10+, impossível). Fix: inverso EWMA
+  L(t)=7×(ATL(t)−ATL(t-1)×6/7), clamped≥0; dias de descanso produzem L=0.
+  Requer 8 dias de ATL para computar 7 cargas diárias; >2.0 atenção, >2.5 alerta;
+  <4 dias L>0 → lowData, sem veredicto. Integrado no card de carga, coach, testes.
 - [Certo] Gráfico de intensidade (getHrZonesWeekly): usa activity_icu_hr_zone_times
   (Intervals.icu, raw JSON {"zones":[Z0..Z6]}, sem atraso). Substituiu
   summarizedActivity_hrTimeInZone_* (Garmin) que tinha atraso ~30 dias — causa
@@ -90,7 +96,8 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   Regra: parser para fonte nova só com fixture REAL capturada antes.
 
 ## Testes e CI
-- Vitest, 260 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
+- Vitest, 265 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
+  (+3 records-cache, +1 monotonia inverso EWMA, +1 15K→null, total commit 2-4)
 - Fixtures REAIS em tests/fixtures/ — dados fisiológicos, .gitignore, NUNCA
   commitar. CI corre contra tests/fixtures-synthetic/ (estrutura real, valores falsos).
 - tools/capture-fixtures.ts recaptura output MCP real (npm run fixtures:capture, local).

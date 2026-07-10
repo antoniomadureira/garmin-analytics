@@ -10,12 +10,10 @@ import { RunningSummaryCard, type RunningSummaryCardData } from "@/components/da
 import { IntensityDistributionChart } from "@/components/dashboard/intensity-distribution-chart";
 import type { WeeklyIntensityData } from "@/lib/analysis/intensity-distribution";
 import { LastWorkoutCard } from "@/components/dashboard/last-workout-card";
-import { RaceGoalCard, type RaceGoalCardData } from "@/components/dashboard/race-goal-card";
+import { RaceGoalCard } from "@/components/dashboard/race-goal-card";
 import { getLastActivityDate } from "@/lib/utils/activity";
 import { getDecisionWellness } from "@/lib/utils/wellness";
 import { computeWeeklyStressMetrics } from "@/lib/analysis/training-stress";
-import { loadGoal, weeksRemaining, cyclePhase } from "@/lib/coach/goal-store";
-import { selectRiegelInput } from "@/lib/analysis/race-prediction";
 import { YoyKpiGrid, type YoyKpi } from "@/components/dashboard/yoy-kpi-grid";
 import { ReadinessHero } from "@/components/dashboard/readiness-hero";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
@@ -263,74 +261,6 @@ async function loadRunningSummary(service: Awaited<ReturnType<typeof getFreddyDa
   }
 }
 
-async function loadRaceGoalCard(
-  service: Awaited<ReturnType<typeof getFreddyDataService>> | null,
-): Promise<{ data: RaceGoalCardData | null; isReal: boolean; error?: string }> {
-  const goal = await loadGoal().catch(() => null);
-  if (!goal) return { data: null, isReal: false };
-
-  const today = new Date().toISOString().slice(0, 10);
-  const weeksLeft = weeksRemaining(goal.date, today);
-  const phase = cyclePhase(weeksLeft);
-  const [h, m, s] = goal.targetTime.split(":").map(Number);
-  const targetSec = h * 3600 + m * 60 + s;
-
-  let predictedSec: number | null = null;
-  let predictionDate: string | null = null;
-  let predictionSource: "garmin" | "riegel" | null = null;
-  let predictionSourceLabel: string | null = null;
-  let predictionStale = false;
-
-  // Garmin: aceitar só se fresco (<14d) — previsões Garmin têm atraso de sync
-  if (service) {
-    const tG = performance.now();
-    try {
-      const pred = await service.getRacePredictions();
-      const ageDays = Math.floor((Date.now() - new Date(`${pred.date}T00:00:00`).getTime()) / 86_400_000);
-      console.log(JSON.stringify({ evt: "dashboard:timer", loader: "raceGoal:garmin", ms: Math.round(performance.now() - tG), ageDays, stale: ageDays >= 14 }));
-      if (ageDays < 14) {
-        predictedSec = pred.timeMarathonSec;
-        predictionDate = pred.date;
-        predictionSource = "garmin";
-        predictionSourceLabel = "Garmin";
-      }
-    } catch (e) {
-      console.log(JSON.stringify({ evt: "dashboard:timer", loader: "raceGoal:garmin", ms: Math.round(performance.now() - tG), err: String(e).slice(0, 80) }));
-    }
-  }
-
-  // Riegel fallback: Freddy (data = data da corrida, não data do PR all-time)
-  // Tenta janela de 70d; expande para 180d se vazio, com aviso no footer.
-  if (predictedSec === null && service) {
-    const tR = performance.now();
-    try {
-      const records = await service.getPersonalRecords(180);
-      let riegel = selectRiegelInput(records, 70);
-      let stale = false;
-      if (!riegel) {
-        riegel = selectRiegelInput(records, 180);
-        stale = true;
-      }
-      console.log(JSON.stringify({ evt: "dashboard:timer", loader: "raceGoal:riegel", ms: Math.round(performance.now() - tR), records: records.length, found: !!riegel, stale }));
-      if (riegel) {
-        predictedSec = riegel.predictedMarathonSec;
-        predictionDate = riegel.sourceDate;
-        predictionSource = "riegel";
-        predictionSourceLabel = `Riegel/${riegel.sourceLabel}`;
-        predictionStale = stale;
-      }
-    } catch (e) {
-      console.log(JSON.stringify({ evt: "dashboard:timer", loader: "raceGoal:riegel", ms: Math.round(performance.now() - tR), err: String(e).slice(0, 80) }));
-    }
-  }
-
-  return {
-    data: { raceName: goal.race, raceDate: goal.date, weeksLeft, phase, targetSec, predictedSec, predictionDate, predictionSource, predictionSourceLabel, predictionStale: predictionStale || undefined },
-    isReal: predictedSec !== null,
-    error: predictedSec === null ? (service ? "Sem dados de corrida nos últimos 180d (5K/10K/HM)" : "Freddy indisponível") : undefined,
-  };
-}
-
 async function loadLastWorkout(
   service: Awaited<ReturnType<typeof getFreddyDataService>> | null,
   connectError?: string,
@@ -444,22 +374,12 @@ export default async function DashboardPage() {
     source: geoSource,
   };
 
-  // Instrumentação de performance — remover depois de confirmar o loader lento
-  function tL<T>(name: string, p: Promise<T>): Promise<T> {
-    const t0 = performance.now();
-    return p.then(
-      (v) => { console.log(JSON.stringify({ evt: "dashboard:timer", loader: name, ms: Math.round(performance.now() - t0) })); return v; },
-      (e) => { console.log(JSON.stringify({ evt: "dashboard:timer", loader: name, ms: Math.round(performance.now() - t0), err: String(e).slice(0, 80) })); return Promise.reject(e as Error); },
-    );
-  }
-
-  const t_page = performance.now();
-  const [[readinessResult, recoveryResult], trainingLoadResult, yoyResult, runningResult, weatherImpact, intensityResult, lastWorkoutResult, raceGoalResult] = await Promise.all([
-    tL("readinessAndRecovery", loadReadinessAndRecovery(service, connectError)),
-    tL("trainingLoad", loadTrainingLoad(service, connectError)),
-    tL("yoyKpis", loadYoyKpis(service, connectError)),
-    tL("runningSummary", loadRunningSummary(service, connectError)),
-    tL("weather", Promise.all([
+  const [[readinessResult, recoveryResult], trainingLoadResult, yoyResult, runningResult, weatherImpact, intensityResult, lastWorkoutResult] = await Promise.all([
+    loadReadinessAndRecovery(service, connectError),
+    loadTrainingLoad(service, connectError),
+    loadYoyKpis(service, connectError),
+    loadRunningSummary(service, connectError),
+    Promise.all([
       getTodayWeather(geo).catch(() => null),
       (resolvedLat && resolvedLon
         ? getAirQuality(resolvedLat, resolvedLon)
@@ -467,12 +387,10 @@ export default async function DashboardPage() {
       ).catch(() => null),
     ]).then(([w, aq]) =>
       w ? { ...classifyWeatherImpact(w, aq), tempNowC: w.tempNowC, tempMaxC: w.tempMaxC, aqi: aq?.europeanAqi ?? null } : null
-    ).catch(() => null)),
-    tL("intensity", loadRunningIntensity(service, connectError)),
-    tL("lastWorkout", loadLastWorkout(service, connectError)),
-    tL("raceGoal", loadRaceGoalCard(service)),
+    ).catch(() => null),
+    loadRunningIntensity(service, connectError),
+    loadLastWorkout(service, connectError),
   ]);
-  console.log(JSON.stringify({ evt: "dashboard:timer", loader: "TOTAL_Promise.all", ms: Math.round(performance.now() - t_page) }));
 
   // Fallback Strava: quando Freddy está completamente indisponível
   let stravaFallbackActivities: { id: string; name: string; date: string; distanceKm: number; durationSec: number }[] = [];
@@ -515,16 +433,10 @@ export default async function DashboardPage() {
           </section>
         )}
 
-        {/* Objetivo de prova — contexto estratégico */}
-        {raceGoalResult.data && (
-          <section>
-            <RaceGoalCard
-              data={raceGoalResult.data}
-              isReal={raceGoalResult.isReal}
-              error={raceGoalResult.error}
-            />
-          </section>
-        )}
+        {/* Objetivo de prova — carregado client-side para não bloquear o render */}
+        <section>
+          <RaceGoalCard />
+        </section>
 
         {/* Contexto secundário — carga e corrida */}
         <section>
