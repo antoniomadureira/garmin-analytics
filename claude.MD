@@ -42,6 +42,21 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   last-workout-card (dashboard, abaixo do readiness-hero).
   [Certo] Sinais da manhã (sono/HRV/RHR/bateria) leem getMorningWellness (registo de hoje = noite passada); carga (CTL/ATL/TSB) lê getDecisionWellness (ontem). NUNCA aplicar getDecisionWellness a sinais da manhã — regressão histórica de sobrecorreção.
   [Certo] NUNCA média aritmética de paces por amostra — pace agregado = distância total / tempo total (samples 1Hz: média harmónica). Viés confirmado: +15s/km num treino real.
+  - [Certo] Objetivo de prova em coach:goal (Redis, sem TTL) — Maratona de Lisboa
+  2026-10-10, 3:00:00 (4:15/km). Semanas/fase calculadas em código
+  (lib/coach/goal-store.ts), NUNCA pedidas ao modelo. Editar via npm run goal:set.
+- [Certo] Memória do coach: trackDate corre em savePrescription E saveExecution;
+  histórico injetado no FIM do contexto; citação do último treino é FORMATO
+  obrigatório ("📊 Último treino: ..."), não instrução. Convenção: instrução nova
+  ao coach entra sempre também no EXEMPLO do system prompt — o Llama imita
+  exemplos, ignora regras.
+- [Certo] Consistência texto vs bloco ICU: checkIcuConsistency (warning UI +
+  log [coach:consistency], estados consistente/inconsistente/unverifiable).
+  [Provável] Só valida DISTÂNCIAS — treinos 100% por tempo reportam consistente
+  sem verificação real.
+- [Certo] Segunda sessão no mesmo dia: defeito é descanso; hora do treino de
+  hoje entra no contexto; factos ausentes do contexto não se afirmam (regra
+  anti-confabulação no system prompt).
 
 ## Testes e CI
 - Vitest, 77 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
@@ -64,6 +79,9 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
 
 ## Roadmap
 - Feitos: 1 (cache), 2 (limpeza), 3 (testes+CI), 4 (auth), 5+7 (memória do coach
-  prescrito vs executado com decoupling e guardrails), 6 (80/20 semanal),
-  card Último Treino, fixes de localização/AQI/HRV/TSB.
-- PRÓXIMO: 8 (card sub-3h). Depois: 9 (ramp/monotony), 10 (modelo p/ prescrição).
+  prescrito vs executado, decoupling, guardrails, formato 📊 validado em produção),
+  6 (80/20 semanal), 8 (objetivo de prova + card Rumo ao sub-3h), card Último
+  Treino, consistência ICU, fixes de localização/AQI/HRV/TSB/pace harmónico.
+- EM CURSO: 9 (ramp rate + monotony/strain com alertas) — prompt acordado no chat.
+- Depois: 10 (modelo p/ prescrição), 11 (encriptar tokens + LICENSE + template OSS),
+  12 (hipnograma, race readiness 12 semanas).
