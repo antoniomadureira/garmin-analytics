@@ -198,7 +198,7 @@ export function ReadinessHero({ readiness, load, recovery, weather }: HeroProps)
       {/* Sinais em largura total */}
       <div className="border-t border-slate-800/60">
         <Signal
-          label="HRV"
+          label="HRV (última noite)"
           value={recovery.hrv ? `${recovery.hrv} ms` : null}
           valueSeverity={hrvDelta !== null ? hrvSeverity(hrvDelta) : undefined}
           delta={hrvDelta}

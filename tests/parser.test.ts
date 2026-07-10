@@ -6,7 +6,7 @@ vi.mock("@/lib/redis");
 vi.mock("@/lib/freddy/client", () => ({ getFreddyClient: vi.fn() }));
 
 import { parseQueryMetricsText } from "@/lib/freddy/data-adapter";
-import { extractValuesByDate } from "@/lib/freddy/metrics";
+import { extractValuesByDate, extractIcuHrZonesByDate } from "@/lib/freddy/metrics";
 
 const SYNTH = path.join(process.cwd(), "tests/fixtures-synthetic");
 const REAL = path.join(process.cwd(), "tests/fixtures");
@@ -92,6 +92,49 @@ function parserSuite(wellness: string, noData: string) {
     });
   });
 }
+
+// ─── extractIcuHrZonesByDate ──────────────────────────────────────────────────
+
+describe("extractIcuHrZonesByDate", () => {
+  const SAMPLE = [
+    "2026-07-09:",
+    "  activity_icu_hr_zone_times: 4415 seconds (Intervals.icu)",
+    '    raw: {"zones":[870,1679,1611,222,33,0,0]}',
+    "2026-07-07:",
+    "  activity_icu_hr_zone_times: 5330 seconds (Intervals.icu)",
+    '    raw: {"zones":[1292,1729,594,530,654,455,76]}',
+    // dia com duas atividades
+    "2026-07-05:",
+    "  activity_icu_hr_zone_times: 2534 seconds (Intervals.icu)",
+    '    raw: {"zones":[66,42,36,18,193,463,1716]}',
+    "  activity_icu_hr_zone_times: 784 seconds (Intervals.icu)",
+    '    raw: {"zones":[170,287,222,77,28,0,0]}',
+  ].join("\n");
+
+  it("extrai zonas de atividade única por data", () => {
+    const map = extractIcuHrZonesByDate(SAMPLE);
+    expect(map.get("2026-07-09")).toEqual([[870, 1679, 1611, 222, 33, 0, 0]]);
+    expect(map.get("2026-07-07")).toEqual([[1292, 1729, 594, 530, 654, 455, 76]]);
+  });
+
+  it("agrupa múltiplas atividades no mesmo dia em lista", () => {
+    const map = extractIcuHrZonesByDate(SAMPLE);
+    const day = map.get("2026-07-05");
+    expect(day).toHaveLength(2);
+    expect(day![0]).toEqual([66, 42, 36, 18, 193, 463, 1716]);
+    expect(day![1]).toEqual([170, 287, 222, 77, 28, 0, 0]);
+  });
+
+  it("ignora JSON malformado sem lançar erro", () => {
+    const bad = "2026-07-01:\n  activity_icu_hr_zone_times: 100 seconds\n    raw: {bad json}\n";
+    expect(() => extractIcuHrZonesByDate(bad)).not.toThrow();
+    expect(extractIcuHrZonesByDate(bad).size).toBe(0);
+  });
+
+  it("texto vazio → mapa vazio", () => {
+    expect(extractIcuHrZonesByDate("").size).toBe(0);
+  });
+});
 
 describe("parser — synthetic fixtures", () => {
   parserSuite(synthWellness, synthNoData);

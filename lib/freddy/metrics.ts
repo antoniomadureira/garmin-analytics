@@ -402,7 +402,7 @@ interface FreddyMcpClient {
    * valores escalares do texto devolvido — não há JSON estruturado nenhum
    * a extrair. Opcional porque a maioria dos mappers não precisa disto.
    */
-  queryRawText?(args: { metrics: string[]; days?: number; start?: string; end?: string }): Promise<string>;
+  queryRawText?(args: { metrics: string[]; days?: number; start?: string; end?: string; includeRaw?: boolean }): Promise<string>;
 }
 
 export class FreddyDataService {
@@ -1061,9 +1061,9 @@ export class FreddyDataService {
 
   /**
    * Distribuição de intensidade das últimas N semanas.
-   * Fonte: summarizedActivity_hrTimeInZone_0..6 (segundos por zona, Garmin).
-   * [Suposição] Unidade confirmada como segundos — mesmo padrão de nomes
-   * que as restantes summarizedActivity_* (ver CLAUDE.md).
+   * [Certo] Fonte: activity_icu_hr_zone_times (Intervals.icu, raw JSON, sem atraso).
+   * Substitui summarizedActivity_hrTimeInZone_* que tinha atraso ~30 dias confirmado
+   * — causa de "sem dados desde 15/6" diagnosticada em 2026-07-10.
    * Z0 excluído da agregação (abaixo de Z1 — aquecimento/transição).
    */
   async getHrZonesWeekly(weeks = 8): Promise<WeeklyIntensityData[]> {
@@ -1086,27 +1086,21 @@ export class FreddyDataService {
 
     const days = weeks * 7;
     const text = await this.client.queryRawText({
-      metrics: [...SummarizedActivityMetrics.hrZoneSeconds],
+      metrics: ["activity_icu_hr_zone_times"],
       days,
+      includeRaw: true,
     });
 
-    // Extrai valores por data para cada zona (Map<date, number[]> — vários por dia se houver mais de 1 atividade)
-    const zoneByDate = SummarizedActivityMetrics.hrZoneSeconds.map((metric) =>
-      extractValuesByDate(text, metric),
-    );
-
-    // Agrupa atividades por semana (segunda-feira)
+    const icuZonesByDate = extractIcuHrZonesByDate(text);
     const weekMap = new Map<string, Array<{ zoneSeconds: number[] }>>();
-    const allDates = new Set<string>();
-    zoneByDate.forEach((map) => map.forEach((_, d) => allDates.add(d)));
 
-    for (const date of allDates) {
+    for (const [date, zonesArrays] of icuZonesByDate) {
       const monday = getMondayStr(date);
-      // Cada data pode ter múltiplas atividades — sum dos valores por zona
-      const zoneSeconds = zoneByDate.map((map) => {
-        const vals = map.get(date) ?? [];
-        return vals.reduce((a, b) => a + b, 0);
-      });
+      // Soma múltiplas atividades no mesmo dia
+      const zoneSeconds = Array<number>(7).fill(0);
+      for (const zones of zonesArrays) {
+        zones.forEach((s, i) => { zoneSeconds[i] += s; });
+      }
       if (!weekMap.has(monday)) weekMap.set(monday, []);
       weekMap.get(monday)!.push({ zoneSeconds });
     }
@@ -1937,6 +1931,47 @@ export function extractFirstTimeByDate(text: string): Map<string, string> {
     const m = line.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}):\s*$/);
     if (m && !result.has(m[1])) {
       result.set(m[1], m[2]);
+    }
+  }
+  return result;
+}
+
+/**
+ * Extrai arrays de zonas HR (activity_icu_hr_zone_times) por data.
+ * Formato raw: {"zones":[Z0,Z1,Z2,Z3,Z4,Z5,Z6]} em segundos.
+ * Suporta múltiplas atividades por dia (lista de arrays).
+ */
+export function extractIcuHrZonesByDate(text: string): Map<string, number[][]> {
+  const result = new Map<string, number[][]>();
+  let currentDate: string | null = null;
+  let pendingZones = false;
+
+  for (const line of text.split("\n")) {
+    const dateMatch = line.match(YOY_DATE_HEADER_RE);
+    if (dateMatch) {
+      currentDate = dateMatch[1];
+      pendingZones = false;
+      continue;
+    }
+    if (/^\s*activity_icu_hr_zone_times:/.test(line)) {
+      pendingZones = true;
+      continue;
+    }
+    if (pendingZones && currentDate) {
+      const rawMatch = line.match(/^\s*raw:\s*(\{.*\})\s*$/);
+      if (rawMatch) {
+        pendingZones = false;
+        try {
+          const parsed = JSON.parse(rawMatch[1]) as { zones?: unknown };
+          if (Array.isArray(parsed.zones)) {
+            const arr = result.get(currentDate) ?? [];
+            arr.push(parsed.zones as number[]);
+            result.set(currentDate, arr);
+          }
+        } catch { /* JSON malformado — ignorar */ }
+      } else if (line.trim() !== "") {
+        pendingZones = false;
+      }
     }
   }
   return result;

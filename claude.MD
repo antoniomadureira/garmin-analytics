@@ -65,9 +65,15 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   [Suposição] ATL como carga diária); >2.0 atenção, >2.5 alerta; <4 dias ATL>0 →
   lowData, sem veredicto. Integrado no card de carga (sem ruído verde), no contexto
   do coach ([CARGA — ...]) e nos testes.
+- [Certo] Gráfico de intensidade (getHrZonesWeekly): usa activity_icu_hr_zone_times
+  (Intervals.icu, raw JSON {"zones":[Z0..Z6]}, sem atraso). Substituiu
+  summarizedActivity_hrTimeInZone_* (Garmin) que tinha atraso ~30 dias — causa
+  confirmada do "sem dados desde 15/6". Parser: extractIcuHrZonesByDate (exportado,
+  testado). Formato lido com includeRaw:true; FreddyClient.queryRawText aceita
+  includeRaw na interface.
 
 ## Testes e CI
-- Vitest, 237 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
+- Vitest, 241 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
 - Fixtures REAIS em tests/fixtures/ — dados fisiológicos, .gitignore, NUNCA
   commitar. CI corre contra tests/fixtures-synthetic/ (estrutura real, valores falsos).
 - tools/capture-fixtures.ts recaptura output MCP real (npm run fixtures:capture, local).
@@ -83,8 +89,6 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
 - Composto de readiness: evoluir comparação de HRV para média 7d vs baseline 30-60d
   (uma noite vs média é ruidoso). Iteração, não bug.
 - Split de lib/freddy/metrics.ts (ainda ~2000 linhas) em módulos.
-- Rótulo do card HRV → "HRV (última noite)" (confusão real com o HRV Status 7d do Garmin — pedido 3x, 
-nunca confirmado em diff).
 
 ## Roadmap
 - Feitos: 1 (cache), 2 (limpeza), 3 (testes+CI), 4 (auth), 5+7 (memória do coach
