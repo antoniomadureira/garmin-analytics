@@ -414,12 +414,12 @@ describe("formatWorkoutHistory — 3 estados", () => {
     expect(formatWorkoutHistory([])).toBe("");
   });
 
-  it("estado 1 — par completo: inclui nome, prescrito, executado e desvio vs alvo", () => {
+  it("estado 1 — par completo: inclui nome, prescrito, executado", () => {
+    // PRESC_SAMPLE é treino por tempo/FC (sem mainPace) → sem linha de desvio
     const result = formatWorkoutHistory([{ date: "2026-07-07", prescribed: PRESC_SAMPLE, executed: EXEC_SAMPLE }]);
     expect(result).toContain("Rolante Z2");
     expect(result).toContain("prescrito: 60min");
     expect(result).toContain("executado 12.3km em 65min");
-    expect(result).toContain("pace -8s/km vs alvo");
     // instrução reforçada presente
     expect(result).toContain("DEVES referir explicitamente");
   });
@@ -445,5 +445,53 @@ describe("formatWorkoutHistory — 3 estados", () => {
   it("par sem nenhum lado é filtrado (linha ausente)", () => {
     const result = formatWorkoutHistory([{ date: "2026-07-07", prescribed: null, executed: null }]);
     expect(result).toBe("");
+  });
+});
+
+// ─── formatWorkoutHistory — desvio de pace ────────────────────────────────────
+
+describe("formatWorkoutHistory — desvio de pace (texto direcional)", () => {
+  // 5:00-5:15/km = 300-315 sec/km; 4:44/km = 284 sec/km → 16s mais rápido
+  const PRESC_PACE = parseIcuWorkout("Corrida Fácil", "Principal\n- 10km 5:00-5:15/km Pace");
+
+  function makeExec(avgPaceMinPerKm: number): WorkoutExecution {
+    return {
+      ...EXEC_SAMPLE,
+      avgPaceMinPerKm,
+      paceVsTargetSecPerKm: null, // campo legado ignorado
+    };
+  }
+
+  it("4:44 vs 5:00-5:15 → '16s mais rápido que o alvo'", () => {
+    const result = formatWorkoutHistory([
+      { date: "2026-07-09", prescribed: PRESC_PACE, executed: makeExec(284 / 60) },
+    ]);
+    expect(result).toContain("16s mais rápido que o alvo");
+  });
+
+  it("5:20 vs 5:00-5:15 → '5s mais lento que o alvo'", () => {
+    // 5:20 = 320 sec/km; maxSecPerKm = 315; 320 - 315 = 5s
+    const result = formatWorkoutHistory([
+      { date: "2026-07-09", prescribed: PRESC_PACE, executed: makeExec(320 / 60) },
+    ]);
+    expect(result).toContain("5s mais lento que o alvo");
+  });
+
+  it("5:07 vs 5:00-5:15 → 'dentro do alvo'", () => {
+    // 5:07 = 307 sec/km; 300 ≤ 307 ≤ 315 → dentro do alvo
+    const result = formatWorkoutHistory([
+      { date: "2026-07-09", prescribed: PRESC_PACE, executed: makeExec(307 / 60) },
+    ]);
+    expect(result).toContain("dentro do alvo");
+  });
+
+  it("prescrição sem mainPace (FC only) → sem tokens direcionais na linha de dados", () => {
+    // "desvio" aparece no cabeçalho da instrução — verifica só os tokens direcionais
+    const result = formatWorkoutHistory([
+      { date: "2026-07-09", prescribed: PRESC_SAMPLE, executed: makeExec(284 / 60) },
+    ]);
+    expect(result).not.toContain("mais rápido");
+    expect(result).not.toContain("mais lento");
+    expect(result).not.toContain("dentro do alvo");
   });
 });

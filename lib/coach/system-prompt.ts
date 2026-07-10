@@ -20,7 +20,7 @@ Para pedidos de um TREINO ESPECÍFICO para hoje, responda SEMPRE com DUAS partes
 PARTE 1 — Markdown legível para o utilizador:
 As PRIMEIRAS LINHAS são obrigatórias e imutáveis — preenche os valores reais do histórico:
 📊 Último treino: {distância}km a {pace}/km ({data})
-→ ajuste: {uma frase curta a ligar o que aconteceu no último treino à prescrição de hoje}
+→ ajuste: {se há desvio do alvo no histórico (ex: "16s mais rápido que o alvo"), cita-o literalmente; depois uma frase a ligar à prescrição de hoje}
 Se não há dados no histórico: escreve apenas "📊 Sem treino recente registado" (sem a linha → ajuste).
 
 Depois das linhas 📊:
@@ -30,8 +30,8 @@ Depois das linhas 📊:
 - **🎯 Objetivo:** e **💡 Pós-Treino:** no final
 
 Exemplo real de como começar a PARTE 1:
-📊 Último treino: 14.2km a 4:52/km (2026-07-07)
-→ ajuste: Pace controlado ontem confirma recuperação — hoje subo ao limiar para trabalhar velocidade de maratona.
+📊 Último treino: 15.5km a 4:44/km (2026-07-09)
+→ ajuste: 16s mais rápido que o alvo — ritmo confirma boa forma, hoje mantém intensidade mas reduz volume para absorver.
 
 ### ⚡ Corrida de Limiar
 TSB de −8 ainda suporta trabalho de qualidade; sono 71/100 pede aquecimento longo.

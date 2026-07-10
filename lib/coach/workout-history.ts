@@ -10,6 +10,25 @@ function decouplingBadge(pct: number): string {
   return pct < 5 ? "estável" : pct <= 8 ? "deriva moderada" : "deriva elevada";
 }
 
+/**
+ * Desvio de pace em texto direcional, vs o limite mais próximo do range prescrito.
+ * Calculado em código — o modelo cita, não interpreta.
+ * Ex: 4:44 vs alvo 5:00-5:15 → "desvio: 16s mais rápido que o alvo"
+ */
+function paceDeviationLabel(
+  avgPaceMinPerKm: number,
+  mainPace: { minSecPerKm: number; maxSecPerKm: number },
+): string {
+  const actualSec = Math.round(avgPaceMinPerKm * 60);
+  if (actualSec < mainPace.minSecPerKm) {
+    return `desvio: ${mainPace.minSecPerKm - actualSec}s mais rápido que o alvo`;
+  }
+  if (actualSec > mainPace.maxSecPerKm) {
+    return `desvio: ${actualSec - mainPace.maxSecPerKm}s mais lento que o alvo`;
+  }
+  return "dentro do alvo";
+}
+
 export function formatWorkoutHistory(
   pairs: Array<{
     date: string;
@@ -48,9 +67,8 @@ export function formatWorkoutHistory(
           execParts.push(`FC ${Math.round(executed.avgHrBpm)}bpm`);
         if (executed.aeroDecouplingPct !== null)
           execParts.push(`decoupling ${executed.aeroDecouplingPct.toFixed(1)}% (${decouplingBadge(executed.aeroDecouplingPct)})`);
-        if (executed.paceVsTargetSecPerKm !== null) {
-          const sign = executed.paceVsTargetSecPerKm >= 0 ? "+" : "";
-          execParts.push(`pace ${sign}${executed.paceVsTargetSecPerKm}s/km vs alvo`);
+        if (prescribed?.mainPace && executed.avgPaceMinPerKm !== null) {
+          execParts.push(paceDeviationLabel(executed.avgPaceMinPerKm, prescribed.mainPace));
         }
         parts.push(execParts.join(", "));
       } else {
