@@ -31,7 +31,10 @@ export async function getCachedPersonalRecords(): Promise<StravaLabRecord[]> {
     // [Suposição] Dois sets independentes — pipeline não disponível no
     // cliente REST. Falha silenciosa: a próxima visita volta a buscar.
     try {
-      await Promise.all([kv.set(RECORDS_KEY, records), kv.set(LATEST_KEY, latestId)]);
+      await Promise.all([
+        kv.set(RECORDS_KEY, records, { ex: 86400 }),
+        kv.set(LATEST_KEY, latestId, { ex: 86400 }),
+      ]);
     } catch { /* cache write failure */ }
   }
 
