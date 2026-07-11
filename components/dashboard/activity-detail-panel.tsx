@@ -23,6 +23,7 @@ export interface ActivityDetailFull {
   maxHr: number | null;
   elevationGainM: number | null;
   caloriesKcal: number | null;
+  activityName?: string | null;
   route: [number, number][];
   series: DetailSeriesPoint[];
   samplesUnavailable: boolean;

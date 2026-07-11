@@ -544,6 +544,7 @@ export class FreddyDataService {
     maxHr: number | null;
     elevationGainM: number | null;
     caloriesKcal: number | null;
+    activityName: string | null;
     route: [number, number][]; // [lat, lng]
     series: { distanceKm: number; hr: number | null; altitude: number | null; paceMinPerKm: number | null; cadence: number | null }[];
     samplesUnavailable: boolean;
@@ -565,6 +566,7 @@ export class FreddyDataService {
         RunActivityMetrics.maxHr,
         RunActivityMetrics.elevationGainM,
         RunActivityMetrics.activeKcal,
+        RunActivityMetrics.activityName,
       ],
       start: date,
       end: date,
@@ -575,6 +577,7 @@ export class FreddyDataService {
     const maxHr = extractValuesByDate(recentText, RunActivityMetrics.maxHr).get(date)?.[0] ?? null;
     let elevationGainM = extractValuesByDate(recentText, RunActivityMetrics.elevationGainM).get(date)?.[0] ?? null;
     let caloriesKcal = extractValuesByDate(recentText, RunActivityMetrics.activeKcal).get(date)?.[0] ?? null;
+    const activityName = extractStringValuesByDate(recentText, RunActivityMetrics.activityName).get(date)?.[0] ?? null;
 
     if (distanceM === 0) {
       const summText = await this.client.queryRawText({
@@ -658,6 +661,7 @@ export class FreddyDataService {
       maxHr,
       elevationGainM,
       caloriesKcal,
+      activityName,
       route,
       series,
       samplesUnavailable,

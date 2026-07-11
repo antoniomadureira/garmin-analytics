@@ -50,7 +50,8 @@ export function LastWorkoutCard({ date }: { date: string }) {
           <div className="flex items-start justify-between mb-3">
             <div>
               <span className="text-[10px] font-medium uppercase tracking-widest text-slate-500">Último Treino</span>
-              <h3 className="text-sm font-semibold text-slate-200 mt-0.5">Corrida · {label}</h3>
+              <h3 className="text-sm font-semibold text-slate-200 mt-0.5">{data.activityName ?? "Corrida"}</h3>
+              <span className="text-[10px] text-slate-500">{label}</span>
             </div>
             <ChevronRight size={16} className="text-slate-500 mt-1 flex-shrink-0" />
           </div>
@@ -83,7 +84,7 @@ export function LastWorkoutCard({ date }: { date: string }) {
       <BottomSheet
         open={open}
         onClose={() => setOpen(false)}
-        title={`Corrida · ${label}`}
+        title={data.activityName ? `${data.activityName} · ${label}` : `Corrida · ${label}`}
       >
         {/* data já está em memória — o painel abre sem fetch extra */}
         <ActivityDetailPanel date={date} initialData={data} />
