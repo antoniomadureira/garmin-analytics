@@ -7,6 +7,7 @@ import { ActivitySeriesChart, type DetailSeriesPoint } from "@/components/dashbo
 import { Gauge, Clock, Zap, Heart, TrendingUp, Mountain, Flame, Footprints } from "lucide-react";
 import type { PrescribedWorkout, WorkoutExecution } from "@/lib/types/coach";
 import { needsFreddyFetch } from "@/lib/utils/activity-detail";
+import { decouplingInterpretation } from "@/lib/analysis/decoupling";
 
 const RouteMap = dynamic(() => import("@/components/dashboard/route-map").then((m) => m.RouteMap), {
   ssr: false,
@@ -114,6 +115,13 @@ export function PrescribedVsExecutedCard({
     });
   }
 
+  const decouplingPct = execution?.aeroDecouplingPct ?? null;
+  const decouplingInterpCls =
+    decouplingPct === null ? ""
+    : decouplingPct < 5 ? "text-emerald-400"
+    : decouplingPct <= 8 ? "text-amber-400"
+    : "text-red-400";
+
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-3 space-y-2.5">
       <div className="flex items-center justify-between">
@@ -122,6 +130,11 @@ export function PrescribedVsExecutedCard({
         </h4>
         {execution && <DecouplingBadge pct={execution.aeroDecouplingPct} />}
       </div>
+      {decouplingPct !== null && (
+        <p className={`-mt-1 text-[10px] ${decouplingInterpCls}`}>
+          {decouplingInterpretation(decouplingPct)}
+        </p>
+      )}
 
       {rows.length > 0 && (
         <div className="grid grid-cols-3 gap-x-2 text-xs text-slate-500">

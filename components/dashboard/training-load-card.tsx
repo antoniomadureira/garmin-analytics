@@ -4,6 +4,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
 import { TrendingUp, TrendingDown, Minus, AlertTriangle, Info } from "lucide-react";
 import type { StressLevel } from "@/lib/analysis/training-stress";
+import { rampRateInterpretation, monotonyInterpretation, stressSynthesisLine } from "@/lib/analysis/training-stress";
 
 export interface TrainingLoadPoint {
   date: string; // dd/mm
@@ -145,6 +146,12 @@ export function TrainingLoadCard({ data }: { data: TrainingLoadCardData }) {
   const ctlDelta = first && last ? Math.round((last.ctl - first.ctl) * 10) / 10 : null;
   const atlDelta = first && last ? Math.round((last.atl - first.atl) * 10) / 10 : null;
 
+  const synthesisLine = stressSynthesisLine(data.rampRateStatus, data.monotonyStatus);
+  const synthesisColor =
+    data.rampRateStatus === "alert" || data.monotonyStatus === "alert"
+      ? STRESS_COLORS.alert
+      : STRESS_COLORS.attention;
+
   return (
     <Card className="flex-1">
       <CardTitle>Estado do Treino</CardTitle>
@@ -201,37 +208,57 @@ export function TrainingLoadCard({ data }: { data: TrainingLoadCardData }) {
         {/* 4. Ramp rate + Monotonia — só quando em atenção/alerta (sem ruído verde) */}
         {(data.rampRateStatus === "attention" || data.rampRateStatus === "alert" ||
           (!data.stressLowData && (data.monotonyStatus === "attention" || data.monotonyStatus === "alert"))) && (
-          <div className="space-y-1.5 border-t border-slate-800 pt-3">
+          <div className="space-y-2 border-t border-slate-800 pt-3">
             {(data.rampRateStatus === "attention" || data.rampRateStatus === "alert") && (
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-500">Progressão semanal (ramp)</span>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] text-slate-300">
-                    {data.rampRate !== null ? `${data.rampRate.toFixed(2)} CTL/sem` : "—"}
-                  </span>
-                  <StressPill
-                    status={data.rampRateStatus}
-                    label={data.rampRateStatus === "alert" ? "Alerta" : "Atenção"}
-                  />
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-500">Progressão semanal (ramp)</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[11px] text-slate-300">
+                      {data.rampRate !== null ? `${data.rampRate.toFixed(2)} CTL/sem` : "—"}
+                    </span>
+                    <StressPill
+                      status={data.rampRateStatus}
+                      label={data.rampRateStatus === "alert" ? "Alerta" : "Atenção"}
+                    />
+                  </div>
                 </div>
+                {data.rampRate !== null && (
+                  <p className="mt-0.5 text-[10px]" style={{ color: STRESS_COLORS[data.rampRateStatus] }}>
+                    {rampRateInterpretation(data.rampRate)}
+                  </p>
+                )}
               </div>
             )}
             {!data.stressLowData && (data.monotonyStatus === "attention" || data.monotonyStatus === "alert") && (
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-500">
-                  Monotonia · Strain
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] text-slate-300">
-                    {data.monotony !== null ? data.monotony.toFixed(2) : "—"}
-                    {data.strain !== null ? ` · ${data.strain.toFixed(0)}` : ""}
-                  </span>
-                  <StressPill
-                    status={data.monotonyStatus!}
-                    label={data.monotonyStatus === "alert" ? "Alerta" : "Atenção"}
-                  />
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-500">Monotonia · Strain</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[11px] text-slate-300">
+                      {data.monotony !== null ? data.monotony.toFixed(2) : "—"}
+                      {data.strain !== null ? ` · ${data.strain.toFixed(0)}` : ""}
+                    </span>
+                    <StressPill
+                      status={data.monotonyStatus!}
+                      label={data.monotonyStatus === "alert" ? "Alerta" : "Atenção"}
+                    />
+                  </div>
                 </div>
+                {data.monotony !== null && (
+                  <p className="mt-0.5 text-[10px]" style={{ color: STRESS_COLORS[data.monotonyStatus!] }}>
+                    {monotonyInterpretation(data.monotony)}
+                  </p>
+                )}
               </div>
+            )}
+            {synthesisLine && (
+              <p
+                className="border-t border-slate-800/60 pt-1.5 text-[10px] font-medium"
+                style={{ color: synthesisColor }}
+              >
+                {synthesisLine}
+              </p>
             )}
           </div>
         )}

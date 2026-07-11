@@ -152,6 +152,57 @@ export function computeWeeklyStressMetrics(
   };
 }
 
+// ─── Interpretação em linguagem natural (UI) ────────────────────────────────
+//
+// Texto gerado por limiares em código — nunca pelo LLM.
+// Cada frase: o que significa + o que fazer.
+
+const RAMP_RATE_THRESHOLDS = {
+  CONSERVATIVE: 1.0, // < → progressão conservadora
+  FAST: 1.5,         // >= → a subir depressa
+  AGGRESSIVE: 2.0,   // >= → subida agressiva
+} as const;
+
+const MONOTONY_THRESHOLDS = {
+  VARIED: 1.5,  // < → bem variado
+  UNIFORM: 2.0, // >= → alguma uniformidade (atenção)
+  HIGH: 2.5,    // >= → alta monotonia (alerta)
+} as const;
+
+export function rampRateInterpretation(current: number): string {
+  if (current < RAMP_RATE_THRESHOLDS.CONSERVATIVE)
+    return "progressão conservadora — há margem para aumentar";
+  if (current < RAMP_RATE_THRESHOLDS.FAST)
+    return "progressão saudável";
+  if (current < RAMP_RATE_THRESHOLDS.AGGRESSIVE)
+    return "a subir depressa — mantém se a próxima semana estabilizar";
+  return "subida agressiva — risco se mantida; considera uma semana de consolidação";
+}
+
+export function monotonyInterpretation(monotony: number): string {
+  if (monotony < MONOTONY_THRESHOLDS.VARIED)
+    return "treino bem variado";
+  if (monotony < MONOTONY_THRESHOLDS.UNIFORM)
+    return "alguma uniformidade — ok";
+  if (monotony < MONOTONY_THRESHOLDS.HIGH)
+    return "treinos demasiado parecidos — mete um dia claramente fácil ou de descanso para quebrar a monotonia";
+  return "monotonia alta — risco; varia intensidade e inclui descanso";
+}
+
+/** Linha de síntese quando ramp E monotonia estão simultaneamente em atenção/alerta. */
+export function stressSynthesisLine(
+  rampStatus: StressLevel | null,
+  monotonyStatus: StressLevel | null,
+): string | null {
+  if (
+    (rampStatus === "attention" || rampStatus === "alert") &&
+    (monotonyStatus === "attention" || monotonyStatus === "alert")
+  ) {
+    return "a subir carga depressa e de forma uniforme — o padrão de maior risco; prioriza variar e descansar";
+  }
+  return null;
+}
+
 // ─── Formatação para contexto do coach ──────────────────────────────────────
 
 /**

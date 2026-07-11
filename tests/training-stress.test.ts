@@ -5,6 +5,9 @@ import {
   monotonyStatusLevel,
   computeWeeklyStressMetrics,
   formatStressContext,
+  rampRateInterpretation,
+  monotonyInterpretation,
+  stressSynthesisLine,
 } from "@/lib/analysis/training-stress";
 import type { WellnessDay } from "@/lib/freddy/metrics";
 
@@ -257,5 +260,109 @@ describe("formatStressContext", () => {
       monotony: { monotony: null, strain: null, weeklyAtlSum: null, status: "alert", lowData: true },
     });
     expect(ctx).toBe("");
+  });
+});
+
+// ─── rampRateInterpretation ───────────────────────────────────────────────────
+
+describe("rampRateInterpretation", () => {
+  it("<1.0 → progressão conservadora", () => {
+    expect(rampRateInterpretation(0.7)).toContain("conservadora");
+    expect(rampRateInterpretation(0.7)).toContain("margem para aumentar");
+  });
+
+  it("1.0 (limiar) → progressão saudável", () => {
+    expect(rampRateInterpretation(1.0)).toContain("saudável");
+  });
+
+  it("1.2 → progressão saudável", () => {
+    expect(rampRateInterpretation(1.2)).toContain("saudável");
+  });
+
+  it("1.5 (limiar) → a subir depressa", () => {
+    expect(rampRateInterpretation(1.5)).toContain("subir depressa");
+  });
+
+  it("1.7 → a subir depressa", () => {
+    expect(rampRateInterpretation(1.7)).toContain("subir depressa");
+    expect(rampRateInterpretation(1.7)).toContain("próxima semana estabilizar");
+  });
+
+  it("2.0 (limiar) → subida agressiva", () => {
+    expect(rampRateInterpretation(2.0)).toContain("agressiva");
+    expect(rampRateInterpretation(2.0)).toContain("consolidação");
+  });
+
+  it("2.5 → subida agressiva", () => {
+    expect(rampRateInterpretation(2.5)).toContain("agressiva");
+  });
+});
+
+// ─── monotonyInterpretation ───────────────────────────────────────────────────
+
+describe("monotonyInterpretation", () => {
+  it("<1.5 → treino bem variado", () => {
+    expect(monotonyInterpretation(1.1)).toContain("bem variado");
+  });
+
+  it("1.5 (limiar) → alguma uniformidade", () => {
+    expect(monotonyInterpretation(1.5)).toContain("uniformidade");
+  });
+
+  it("1.8 → alguma uniformidade", () => {
+    expect(monotonyInterpretation(1.8)).toContain("uniformidade");
+  });
+
+  it("2.0 (limiar) → treinos demasiado parecidos", () => {
+    expect(monotonyInterpretation(2.0)).toContain("demasiado parecidos");
+    expect(monotonyInterpretation(2.0)).toContain("descanso");
+  });
+
+  it("2.3 → treinos demasiado parecidos", () => {
+    expect(monotonyInterpretation(2.3)).toContain("demasiado parecidos");
+  });
+
+  it("2.5 (limiar) → monotonia alta", () => {
+    expect(monotonyInterpretation(2.5)).toContain("monotonia alta");
+    expect(monotonyInterpretation(2.5)).toContain("descanso");
+  });
+
+  it("3.0 → monotonia alta", () => {
+    expect(monotonyInterpretation(3.0)).toContain("monotonia alta");
+  });
+});
+
+// ─── stressSynthesisLine ──────────────────────────────────────────────────────
+
+describe("stressSynthesisLine", () => {
+  it("ambos attention → retorna linha de síntese", () => {
+    const line = stressSynthesisLine("attention", "attention");
+    expect(line).not.toBeNull();
+    expect(line).toContain("uniforme");
+    expect(line).toContain("variar");
+  });
+
+  it("ramp alert + monotony attention → síntese (maior risco)", () => {
+    expect(stressSynthesisLine("alert", "attention")).not.toBeNull();
+  });
+
+  it("ramp attention + monotony alert → síntese", () => {
+    expect(stressSynthesisLine("attention", "alert")).not.toBeNull();
+  });
+
+  it("ambos alert → síntese", () => {
+    expect(stressSynthesisLine("alert", "alert")).not.toBeNull();
+  });
+
+  it("ramp ok + monotony alert → null (só um sinal)", () => {
+    expect(stressSynthesisLine("ok", "alert")).toBeNull();
+  });
+
+  it("ramp attention + monotony null → null (dados insuficientes)", () => {
+    expect(stressSynthesisLine("attention", null)).toBeNull();
+  });
+
+  it("ambos null → null", () => {
+    expect(stressSynthesisLine(null, null)).toBeNull();
   });
 });
