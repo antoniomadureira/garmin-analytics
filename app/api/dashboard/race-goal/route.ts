@@ -45,7 +45,11 @@ export async function GET() {
   if (predictedSec === null && service) {
     try {
       const records = await service.getPersonalRecords(180);
+      console.log("[race-goal:records-180d]", JSON.stringify(records.map(r => ({
+        label: r.label, distKm: r.distanceKm, pace: r.paceMinPerKm.toFixed(2), date: r.date,
+      }))));
       let riegel = selectRiegelInput(records, 70);
+      console.log("[race-goal:riegel-70d]", riegel ? `${riegel.sourceLabel} ${riegel.sourceDate} → ${Math.floor(riegel.predictedMarathonSec/3600)}h${Math.floor((riegel.predictedMarathonSec%3600)/60)}m` : "null");
       let stale = false;
       if (!riegel) {
         riegel = selectRiegelInput(records, 180);
