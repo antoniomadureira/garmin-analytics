@@ -78,6 +78,20 @@ export function RunningSummaryCard({ data }: { data: RunningSummaryCardData }) {
           />
         </AreaChart>
       </ResponsiveContainer>
+
+      {/* Linha de resumo: média por corrida + dia de maior carga */}
+      {(() => {
+        const avg = data.runCount > 0 ? data.weeklyDistanceKm / data.runCount : null;
+        const peak = data.dailyDistances.reduce<{ day: string; km: number } | null>(
+          (a, b) => (b.km > (a?.km ?? 0) ? b : a),
+          null,
+        );
+        const parts: string[] = [];
+        if (avg !== null && avg > 0) parts.push(`Média ${avg.toFixed(1)}km/corrida`);
+        if (peak && peak.km > 0) parts.push(`Mais carga: ${peak.day} ${peak.km.toFixed(1)}km`);
+        if (parts.length === 0) return null;
+        return <p className="mt-2 text-[11px] text-slate-500">{parts.join(" · ")}</p>;
+      })()}
     </Card>
   );
 }
