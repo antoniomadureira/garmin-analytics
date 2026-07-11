@@ -4,11 +4,11 @@
  * Ramp rate: consumido diretamente do campo wellness.rampRate (Intervals.icu),
  * em unidades CTL/semana — não recalculado.
  *
- * Monotonia: [Suposição] usa ATL diário como proxy de carga diária — é uma
- * aproximação do modelo Foster (que usa session RPE × duração), dado que
- * não temos o impulso diário bruto da API. ATL decai nos dias de descanso
- * (contribui para maior desvio-padrão, menor monotonia) o que preserva o
- * mecanismo de proteção essencial do modelo.
+ * Monotonia: usa wellness.atlLoad (impulso diário bruto do Intervals.icu),
+ * que já contém 0 nos dias de descanso. Abordagem anterior (inverso EWMA do ATL)
+ * foi abandonada: a fórmula ATL do Intervals.icu não é EWMA discreto k=7,
+ * logo a inversão produzia L=16 em dias de descanso (devia ser 0) e L=290 no
+ * dia mais antigo sem prev — monotonia impossível (10+).
  */
 
 import type { WellnessDay } from "@/lib/freddy/metrics";
@@ -26,7 +26,7 @@ export interface MonotonyMetrics {
   strain: number | null;
   weeklyAtlSum: number | null;
   status: StressLevel | null;
-  /** <4 dias com ATL não-nulo → sem veredicto */
+  /** <4 dias com carga > 0 → sem veredicto */
   lowData: boolean;
 }
 
@@ -55,8 +55,8 @@ export function computeRampRateStatus(
 // ─── Monotonia / Strain (Foster) ─────────────────────────────────────────────
 
 /**
- * Recebe os valores de ATL dos últimos N dias (com zeros explícitos para
- * dias sem dados/descanso completo). Retorna monotony, strain e lowData.
+ * Recebe cargas diárias dos últimos N dias (zeros explícitos para descanso).
+ * Retorna monotony, strain e lowData.
  */
 export function computeMonotony(atlValues: number[]): {
   monotony: number | null;
@@ -130,18 +130,10 @@ export function computeWeeklyStressMetrics(
   const weekAgoEntry = sorted.find((w) => w.date <= weekAgoDate);
   const weekAgoRampRate = weekAgoEntry?.rampRate ?? null;
 
-  // ── Monotonia: carga diária via inverso EWMA de ATL ──────────────────────
-  // ATL (k=7): ATL(t) = ATL(t-1)×(6/7) + L(t)×(1/7)
-  // Inverso:   L(t)   = 7×(ATL(t) − ATL(t-1)×(6/7)), clamped ≥0.
-  // Usar ATL diretamente dava monotonia impossível (10+): o EWMA suaviza os
-  // dias de descanso (ATL cai 1/7 em vez de ir a 0) → variância mínima.
-  // Com o inverso EWMA, dias de descanso produzem L=0 e o Foster funciona.
-  const last8 = sorted.slice(0, 8);
-  const atlWith8 = last8.map((w) => w.atl ?? 0);
-  const dailyLoads = atlWith8.slice(0, 7).map((atl_t, i) => {
-    const atl_prev = i + 1 < atlWith8.length ? atlWith8[i + 1] : 0;
-    return Math.max(0, Math.round(7 * (atl_t - atl_prev * (6 / 7))));
-  });
+  // ── Monotonia: atlLoad bruto (Intervals.icu) ─────────────────────────────
+  // atlLoad = impulso diário antes de EWMA; 0 nos dias de descanso.
+  const last7 = sorted.slice(0, 7);
+  const dailyLoads = last7.map((w) => w.atlLoad ?? 0);
 
   const { monotony, strain, weeklyAtlSum, lowData } = computeMonotony(dailyLoads);
 

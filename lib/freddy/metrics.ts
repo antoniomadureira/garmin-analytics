@@ -866,6 +866,7 @@ export class FreddyDataService {
         date,
         ctl: r.ctl ?? null,
         atl: r.atl ?? null,
+        atlLoad: r.atlLoad ?? null,
         tsb:
           r.ctl !== undefined && r.atl !== undefined && r.ctl !== null && r.atl !== null
             ? roundTo(r.ctl - r.atl, 1)
@@ -1560,6 +1561,8 @@ interface WellnessRaw {
   id: string;
   ctl?: number | null;
   atl?: number | null;
+  atlLoad?: number | null; // impulso diário bruto antes de suavização EWMA; 0 em dias de descanso
+  ctlLoad?: number | null;
   rampRate?: number | null;
   restingHR?: number | null;
   hrv?: number | null;
@@ -1576,6 +1579,7 @@ export interface WellnessDay {
   date: string;
   ctl: number | null;
   atl: number | null;
+  atlLoad: number | null; // impulso diário bruto (antes de EWMA); 0 = descanso explícito, null = sem dados
   /** TSB = CTL - ATL, real, da metodologia TrainingPeaks/Intervals.icu — não é mais a aproximação ACWR do Garmin. */
   tsb: number | null;
   rampRate: number | null;

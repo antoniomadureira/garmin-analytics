@@ -79,11 +79,12 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
 - [Certo] Ramp rate (lib/analysis/training-stress.ts): consumido de wellness.rampRate
   (Intervals.icu, CTL/sem), NUNCA recalculado. Semáforo: <1.0 ok; 1.0-1.5 atenção;
   ≥1.5 sustentado 2+ semanas → alerta (verifica weekAgo com Date.UTC para evitar
-  drift de timezone). Monotonia Foster: CORRIGIDA (2026-07-11) — usava ATL EWMA
-  direto (variância mínima → monotonia 10+, impossível). Fix: inverso EWMA
-  L(t)=7×(ATL(t)−ATL(t-1)×6/7), clamped≥0; dias de descanso produzem L=0.
-  Requer 8 dias de ATL para computar 7 cargas diárias; >2.0 atenção, >2.5 alerta;
-  <4 dias L>0 → lowData, sem veredicto. Integrado no card de carga, coach, testes.
+  drift de timezone). Monotonia Foster: usa atlLoad (WellnessDay.atlLoad, impulso
+  diário bruto do Intervals.icu, 0 em dias de descanso). Fix (2026-07-11): ATL EWMA
+  direto → variância mínima → monotonia 10+. Inverso EWMA abandonado: fórmula
+  Intervals.icu ≠ EWMA discreto k=7 (rest day dava L=16 em vez de 0). atlLoad
+  disponível nos raws, extraído em getWellnessWeekly. >2.0 atenção, >2.5 alerta;
+  <4 dias L>0 → lowData, sem veredicto. Integrado no card, coach, testes.
 - [Certo] Gráfico de intensidade (getHrZonesWeekly): usa activity_icu_hr_zone_times
   (Intervals.icu, raw JSON {"zones":[Z0..Z6]}, sem atraso). Substituiu
   summarizedActivity_hrTimeInZone_* (Garmin) que tinha atraso ~30 dias — causa
