@@ -213,6 +213,20 @@ describe("checkIcuConsistency — métricas mistas", () => {
   });
 });
 
+// ─── checkIcuConsistency — hasIntervals propagado para resultado ─────────
+
+describe("checkIcuConsistency — hasIntervals no ConsistencyResult", () => {
+  it("intervalos (6x) → hasIntervals true", () => {
+    const result = checkIcuConsistency(INTERVALS_TEXT, INTERVALS_ICU);
+    expect(result.hasIntervals).toBe(true);
+  });
+
+  it("treino contínuo (sem Nx) → hasIntervals false", () => {
+    const result = checkIcuConsistency(REAL_CASE_TEXT, REAL_CASE_ICU);
+    expect(result.hasIntervals).toBe(false);
+  });
+});
+
 // ─── checkIcuConsistency — zona de pace ──────────────────────────────────
 
 describe("checkIcuConsistency — hasZonePace", () => {

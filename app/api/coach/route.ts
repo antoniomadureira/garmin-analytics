@@ -225,10 +225,16 @@ export async function POST(req: NextRequest) {
     if (nameMatch && descMatch) {
       icuWorkout = { name: nameMatch[1].trim(), description: descMatch[1].trim() };
       const consistency = checkIcuConsistency(reply, icuWorkout.description);
-      if (consistency.warning) {
+      // Platform limitation: Nx repeat blocks don't arrive as structured steps on Garmin
+      if (consistency.hasIntervals) {
+        const nxWarn = "Treino com repetições — por limitação Intervals→Garmin, os steps podem chegar ao relógio como nota de texto. O pace está no texto acima.";
+        consistencyWarning = consistency.warning ? `${nxWarn}; ${consistency.warning}` : nxWarn;
+      } else if (consistency.warning) {
         consistencyWarning = consistency.warning;
+      }
+      if (consistencyWarning) {
         console.log("[coach:consistency] WARN", {
-          warning: consistency.warning,
+          warning: consistencyWarning,
           textDistanceKm: consistency.textDistanceKm,
           icuDistanceKm: consistency.icuDistanceKm,
           workoutName: icuWorkout.name,

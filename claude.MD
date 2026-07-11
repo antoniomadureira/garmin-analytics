@@ -104,7 +104,7 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   Regra: parser para fonte nova só com fixture REAL capturada antes.
 
 ## Testes e CI
-- Vitest, 303 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
+- Vitest, 322 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
 - Fixtures REAIS em tests/fixtures/ — dados fisiológicos, .gitignore, NUNCA
   commitar. CI corre contra tests/fixtures-synthetic/ (estrutura real, valores falsos).
 - tools/capture-fixtures.ts recaptura output MCP real (npm run fixtures:capture, local).
@@ -128,9 +128,21 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   em todos os steps no relógio (bug confirmado por moderador ICU, sem ETA de fix;
   fonte: forum.intervals.icu/t/syncing-pace-hr-targets-to-garmin/130238).
   Fix: quando o contexto tem pace zones, todos os steps usam Pace (warmup/
-  cooldown/recuperações em "Z1 Pace"; sessão em pace numérico ou zona Pace).
+  cooldown/recuperações em pace numérico; sessão em pace numérico ou zona Pace).
   HR% só quando não há pace zones no contexto. checkIcuConsistency detecta
   mistura automaticamente (hasMixedMetrics → warning [coach:consistency]).
+- [Certo] ICU↔Garmin sync — blocos de repetição (Nx): workouts com blocos
+  "6x"/"4x" chegam ao Garmin como NOTA DE TEXTO (sem steps executáveis no
+  relógio), não como workout estruturado. Causa: o ICU não injeta campo
+  intensity nos steps dentro de repeat blocks ao gerar o FIT file → Garmin
+  recebe steps sem tipo e regride para nota. Workouts contínuos (Warmup/Main/
+  Cooldown sem Nx) chegam como steps estruturados com pace correto.
+  Bug ICU confirmado, sem ETA de fix; fontes: forum.intervals.icu/t/124473
+  (steps como "Other"), forum.intervals.icu/t/130465 (pace range → notes only).
+  Deteção: parseIcuBlockStats.hasIntervals propagado para ConsistencyResult;
+  route.ts injeta aviso no consistencyWarning quando hasIntervals=true.
+  UI: aviso determinístico ao lado do botão "Enviar para Intervals" — NUNCA
+  via LLM. O pace está sempre no texto do treino — utilizador navega por ele.
 
 ## Roadmap
 - Feitos: 1 (cache), 2 (limpeza), 3 (testes+CI), 4 (auth), 5+7 (memória do coach

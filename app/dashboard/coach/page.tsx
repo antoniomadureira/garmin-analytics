@@ -156,7 +156,7 @@ export default function CoachPage() {
                     {pushState[i] === "error" && <p className="mt-1 text-[11px] text-amber-500">Falha ao enviar — verifique as env vars (INTERVALS_ICU_API_KEY).</p>}
                     {consistencyWarnings[i] && (
                       <p className="mt-2 rounded border border-amber-700/40 bg-amber-900/20 px-2 py-1.5 text-[11px] text-amber-400">
-                        ⚠ Inconsistência ICU: {consistencyWarnings[i]}
+                        ⚠ {consistencyWarnings[i]}
                       </p>
                     )}
                   </div>

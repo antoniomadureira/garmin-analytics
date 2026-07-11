@@ -36,6 +36,12 @@ export interface ConsistencyResult {
   unverifiable: boolean;
   textDistanceKm: number | null;
   icuDistanceKm: number;
+  /**
+   * True se o bloco ICU tem repetições (Nx). Implica aviso de sync Garmin:
+   * workouts com Nx chegam ao relógio como nota de texto, não como steps.
+   * [Certo] Limitação confirmada: forum.intervals.icu/t/124473 e /t/130465
+   */
+  hasIntervals: boolean;
 }
 
 /** Extrai estatísticas do bloco ICU (o campo description dentro das tags). */
@@ -170,5 +176,6 @@ export function checkIcuConsistency(textPart: string, icuDescription: string): C
     unverifiable,
     textDistanceKm,
     icuDistanceKm: stats.totalDistanceKm,
+    hasIntervals: stats.hasIntervals,
   };
 }
