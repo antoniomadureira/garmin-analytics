@@ -45,7 +45,7 @@ interface StravaDetail {
   segmentEfforts: { segmentName: string; distanceM: number; elapsedTimeSec: number; elevGainM: number }[];
   bestEfforts: { label: string; seconds: number }[];
   prCount: number;
-  laps: { lapIndex: number; name: string; distanceM: number; elapsedTimeSec: number; avgHr: number | null }[];
+  laps: { lapIndex: number; name: string; distanceM: number; elapsedTimeSec: number; avgHr: number | null; avgSpeedMs: number | null }[];
   notFound?: boolean;
   error?: string;
 }
@@ -283,14 +283,18 @@ export function ActivityDetailPanel({
             <div>
               <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Laps / Splits</h4>
               <div className="space-y-1">
-                {strava.laps.map((l) => (
-                  <div key={l.lapIndex} className="flex items-center justify-between rounded-lg bg-slate-900/40 px-2.5 py-1.5 text-xs">
-                    <span className="text-slate-400">Lap {l.lapIndex}</span>
-                    <span className="text-slate-300">{(l.distanceM / 1000).toFixed(2)}km</span>
-                    <span className="text-slate-300">{formatSeconds(l.elapsedTimeSec)}</span>
-                    <span className="text-slate-400">{l.avgHr ? `${Math.round(l.avgHr)}bpm` : "—"}</span>
-                  </div>
-                ))}
+                {strava.laps.map((l) => {
+                  // Moving time from Strava average_speed (avg over moving portion)
+                  const movingSec = l.avgSpeedMs && l.avgSpeedMs > 0 ? Math.round(l.distanceM / l.avgSpeedMs) : null;
+                  return (
+                    <div key={l.lapIndex} className="flex items-center justify-between rounded-lg bg-slate-900/40 px-2.5 py-1.5 text-xs">
+                      <span className="text-slate-400">Lap {l.lapIndex}</span>
+                      <span className="text-slate-300">{(l.distanceM / 1000).toFixed(2)}km</span>
+                      <span className="text-slate-300">{formatSeconds(movingSec ?? l.elapsedTimeSec)}</span>
+                      <span className="text-slate-400">{l.avgHr ? `${Math.round(l.avgHr)}bpm` : "—"}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
