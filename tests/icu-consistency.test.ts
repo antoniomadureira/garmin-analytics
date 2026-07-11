@@ -31,16 +31,16 @@ TSB favorável; bom momento para consolidar a base aeróbica com 13.5km a pace c
 **🎯 Objetivo:** base aeróbica, acumulação de volume
 **💡 Pós-Treino:** hidratação e 10min de alongamentos`;
 
-// ─── Fixture: treino de intervalos correto (pace-only, sem mistura HR) ────
+// ─── Fixture: treino de intervalos correto (pace numérico em todos os steps) ─
 const INTERVALS_ICU = `Warmup
-- 2km Z1 Pace
+- 2km 5:30-6:00/km Pace
 
 6x
 - 800mtr 3:50-4:00/km Pace
-- 2min Z1 Pace
+- 2min 5:30-6:00/km Pace
 
 Cooldown
-- 1.5km Z1 Pace`;
+- 1.5km 5:30-6:00/km Pace`;
 
 const INTERVALS_TEXT = `📊 Último treino: 14.2km a 4:52/km (2026-07-07)
 → ajuste: Pace controlado ontem confirma recuperação — hoje subo ao limiar.
@@ -101,6 +101,11 @@ describe("parseIcuBlockStats — intervalos corretos (pace-only)", () => {
     const stats = parseIcuBlockStats(INTERVALS_ICU);
     expect(stats.hasMixedMetrics).toBe(false);
   });
+
+  it("não tem zona de pace — tudo pace numérico", () => {
+    const stats = parseIcuBlockStats(INTERVALS_ICU);
+    expect(stats.hasZonePace).toBe(false);
+  });
 });
 
 describe("parseIcuBlockStats — casos básicos", () => {
@@ -116,6 +121,7 @@ describe("parseIcuBlockStats — casos básicos", () => {
     expect(stats.hasIntervals).toBe(false);
     expect(stats.hasSpuriousRecovery).toBe(false);
     expect(stats.hasMixedMetrics).toBe(false);
+    expect(stats.hasZonePace).toBe(false);
   });
 
   it("recuperação dentro de repetições NÃO é espúria", () => {
@@ -154,6 +160,36 @@ describe("parseIcuBlockStats — hasMixedMetrics", () => {
   });
 });
 
+// ─── hasZonePace ─────────────────────────────────────────────────────────
+
+describe("parseIcuBlockStats — hasZonePace", () => {
+  it("pace numérico → sem zona de pace", () => {
+    const icu = `Main Set\n- 10km 5:00-5:15/km Pace`;
+    expect(parseIcuBlockStats(icu).hasZonePace).toBe(false);
+  });
+
+  it("Z1 Pace (sem numérico) → zona de pace detectada", () => {
+    const icu = `Warmup\n- 2km Z1 Pace`;
+    expect(parseIcuBlockStats(icu).hasZonePace).toBe(true);
+  });
+
+  it("Z2 Pace na recuperação → zona de pace detectada", () => {
+    const icu = `Main\n\n4x\n- 1km 4:15-4:25/km Pace\n- 2min Z2 Pace`;
+    expect(parseIcuBlockStats(icu).hasZonePace).toBe(true);
+  });
+
+  it("Z2-Z3 Pace (range de zonas) → zona de pace detectada", () => {
+    const icu = `Main Set\n- 15min Z2-Z3 Pace`;
+    expect(parseIcuBlockStats(icu).hasZonePace).toBe(true);
+  });
+
+  it("pace numérico com referência a zona em texto ('Z2') sem 'Zx Pace' → não detecta", () => {
+    // Zx aparece em texto descritivo, não como target
+    const icu = `Main Set\n- 10km 4:45-5:00/km Pace`;
+    expect(parseIcuBlockStats(icu).hasZonePace).toBe(false);
+  });
+});
+
 // ─── checkIcuConsistency — métricas mistas ───────────────────────────────
 
 describe("checkIcuConsistency — métricas mistas", () => {
@@ -164,8 +200,8 @@ describe("checkIcuConsistency — métricas mistas", () => {
     expect(result.warning).toContain("Pace e de HR");
   });
 
-  it("workout pace-only não gera warning de mistura", () => {
-    const icu = `Warmup\n- 2km Z1 Pace\n\nMain Set\n- 10km 5:00-5:15/km Pace\n\nCooldown\n- 2km Z1 Pace`;
+  it("workout pace-only (numérico) não gera warning de mistura", () => {
+    const icu = `Warmup\n- 2km 5:30-6:00/km Pace\n\nMain Set\n- 10km 5:00-5:15/km Pace\n\nCooldown\n- 2km 5:30-6:00/km Pace`;
     const result = checkIcuConsistency("treino de 14km", icu);
     expect(result.warning).toBeNull();
   });
@@ -173,6 +209,23 @@ describe("checkIcuConsistency — métricas mistas", () => {
   it("workout HR-only não gera warning de mistura", () => {
     const icu = `Warmup\n- 15min 65-70% HR\n\nMain Set\n- 30min Z2 HR\n\nCooldown\n- 10min 60-65% HR`;
     const result = checkIcuConsistency("treino de 45min", icu);
+    expect(result.warning).toBeNull();
+  });
+});
+
+// ─── checkIcuConsistency — zona de pace ──────────────────────────────────
+
+describe("checkIcuConsistency — hasZonePace", () => {
+  it("workout com 'Z1 Pace' gera warning de zona sem numérico", () => {
+    const icu = `Warmup\n- 2km Z1 Pace\n\nMain Set\n- 10km 5:00-5:15/km Pace\n\nCooldown\n- 2km Z1 Pace`;
+    const result = checkIcuConsistency("treino de 14km", icu);
+    expect(result.warning).not.toBeNull();
+    expect(result.warning).toContain("null-null");
+  });
+
+  it("workout com pace numérico em todos os steps não gera warning de zona", () => {
+    const icu = `Warmup\n- 2km 5:30-6:00/km Pace\n\nMain Set\n- 10km 5:00-5:15/km Pace\n\nCooldown\n- 2km 5:30-6:00/km Pace`;
+    const result = checkIcuConsistency("treino de 14km", icu);
     expect(result.warning).toBeNull();
   });
 });

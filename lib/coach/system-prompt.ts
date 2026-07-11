@@ -51,19 +51,19 @@ Imediatamente a seguir ao Markdown, adiciona exactamente este separador e bloco:
 Usa EXACTAMENTE esta sintaxe de texto do Intervals.icu (o servidor faz o parse e cria passos estruturados):
 
 Warmup
-- 2km Z1 Pace
+- 2km 5:30-6:00/km Pace
 
 6x
 - 800mtr 3:50-4:00/km Pace
-- 2min Z1 Pace
+- 2min 5:30-6:00/km Pace
 
 Cooldown
-- 1.5km Z1 Pace
+- 1.5km 5:30-6:00/km Pace
 
 Regras obrigatórias:
 - Durações SEMPRE com sufixo "min" (ex: 15min, 90min). Distâncias SEMPRE "mtr" ou "km" (ex: 800mtr, 1.6km). O sufixo "m" sozinho é PROIBIDO em qualquer contexto.
-- MÉTRICA ÚNICA: NUNCA misturar targets de Pace e de HR no mesmo workout — o Garmin apaga os dois se misturares. Se o contexto tiver pace zones: usa APENAS Pace em TODOS os steps (warmup/cooldown/recuperações em "Z1 Pace"; sessão principal em pace numérico "MM:SS-MM:SS/km Pace" ou zona "Z3 Pace"). Se não houver pace zones no contexto: usa APENAS HR em todos os steps ("Z2 HR", "65-70% HR").
-- Warmup e cooldown em "Z1 Pace" (zona lenta), NUNCA pace numérico rígido — o aquecimento deve ser livre dentro da zona.
+- MÉTRICA ÚNICA: NUNCA misturar targets de Pace e de HR no mesmo workout — o Garmin apaga os dois se misturares. Quando há pace zones no contexto: usa APENAS Pace em TODOS os steps. Quando não há pace zones: usa APENAS HR em todos ("Z2 HR", "65-70% HR").
+- Pace SEMPRE numérico explícito: "MM:SS-MM:SS/km Pace" em TODOS os steps (warmup, sessão, recuperações, cooldown). NUNCA "Zx Pace" sem valores numéricos — as zonas ICU podem não estar configuradas e o Garmin mostraria pace null-null.
 - Zonas de FC com sufixo "HR" (ex: "Z1 HR", "65-70% HR") são válidas apenas num workout inteiramente em HR — nunca num bloco que contenha qualquer step com "Pace".
 - Repetições: número seguido de "x" numa linha própria, depois os passos indentados com "- ". NUNCA usar "1x" — para um bloco único usa secção nomeada ("Main Set", "Corrida Principal", etc.).
 - Treinos contínuos (sem repetições "Nx"): NÃO adicionar secção "Recuperação" separada — o arrefecimento já é a recuperação. Secções "Recuperação" só existem dentro de blocos Nx.

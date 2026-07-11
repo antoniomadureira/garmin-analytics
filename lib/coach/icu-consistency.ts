@@ -19,6 +19,12 @@ export interface IcuBlockStats {
    * [Certo] Limitação confirmada: forum.intervals.icu/t/syncing-pace-hr-targets-to-garmin/130238
    */
   hasMixedMetrics: boolean;
+  /**
+   * True se algum step usa notação de zona de pace ("Zx Pace") sem valores
+   * numéricos — resolve como pace null-null no Garmin quando as zonas ICU
+   * não estão configuradas. Exigir sempre "MM:SS-MM:SS/km Pace".
+   */
+  hasZonePace: boolean;
 }
 
 export interface ConsistencyResult {
@@ -41,6 +47,7 @@ export function parseIcuBlockStats(description: string): IcuBlockStats {
   let hasSpuriousRecovery = false;
   let hasHrStep = false;
   let hasPaceStep = false;
+  let hasZonePace = false;
   let currentReps = 1;
   let inRepBlock = false;
 
@@ -75,6 +82,10 @@ export function parseIcuBlockStats(description: string): IcuBlockStats {
     // Mixed-metrics detection: HR vs Pace targets on step lines
     if (/\bHR\b/i.test(content)) hasHrStep = true;
     if (/\bPace\b/i.test(content)) hasPaceStep = true;
+    // Zone-pace detection: "Zx Pace" without numeric values (e.g. "Z1 Pace", "Z2 Pace")
+    if (/\bZ\d+(?:-Z\d+)?\s+Pace\b/i.test(content) && !/\d+:\d+.*\/km\s+Pace/i.test(content)) {
+      hasZonePace = true;
+    }
 
     // Distance steps: "10km", "800mtr"
     const kmMatch = content.match(/^(\d+(?:\.\d+)?)\s*km\b/i);
@@ -99,6 +110,7 @@ export function parseIcuBlockStats(description: string): IcuBlockStats {
     // Spurious = recovery section AND no intervals anywhere in the block
     hasSpuriousRecovery: hasSpuriousRecovery && !hasIntervals,
     hasMixedMetrics: hasHrStep && hasPaceStep,
+    hasZonePace,
   };
 }
 
@@ -144,6 +156,10 @@ export function checkIcuConsistency(textPart: string, icuDescription: string): C
 
   if (stats.hasMixedMetrics) {
     warnings.push("workout mistura targets de Pace e de HR — o Garmin só processa um tipo; usa Pace em todos os steps");
+  }
+
+  if (stats.hasZonePace) {
+    warnings.push("step usa zona de pace 'Zx Pace' sem valores numéricos — o Garmin mostrará null-null se as zonas ICU não estiverem definidas; usa MM:SS-MM:SS/km Pace");
   }
 
   // Unverifiable: ICU has explicit distance but text gave us nothing to compare against
