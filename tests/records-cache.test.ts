@@ -17,7 +17,7 @@ import { kv } from "@/lib/redis";
 import { getPersonalRecords, getShoesAndActivities } from "@/lib/strava-lab/client";
 import { getCachedPersonalRecords } from "@/lib/strava-lab/records-cache";
 
-const kvMock = kv as { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
+const kvMock = kv as unknown as { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
 const prMock = getPersonalRecords as ReturnType<typeof vi.fn>;
 const shoesMock = getShoesAndActivities as ReturnType<typeof vi.fn>;
 
