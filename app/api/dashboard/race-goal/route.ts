@@ -42,17 +42,15 @@ export async function GET() {
   }
 
   // Riegel: Freddy records (data = data da corrida, nao PR all-time)
+  // Só considera esforços representativos (pace < goal × 1.25 × 0.90).
+  let noRepresentativeEffort = false;
   if (predictedSec === null && service) {
     try {
       const records = await service.getPersonalRecords(180);
-      console.log("[race-goal:records-180d]", JSON.stringify(records.map(r => ({
-        label: r.label, distKm: r.distanceKm, pace: r.paceMinPerKm.toFixed(2), date: r.date,
-      }))));
-      let riegel = selectRiegelInput(records, 70);
-      console.log("[race-goal:riegel-70d]", riegel ? `${riegel.sourceLabel} ${riegel.sourceDate} → ${Math.floor(riegel.predictedMarathonSec/3600)}h${Math.floor((riegel.predictedMarathonSec%3600)/60)}m` : "null");
+      let riegel = selectRiegelInput(records, 70, targetSec);
       let stale = false;
       if (!riegel) {
-        riegel = selectRiegelInput(records, 180);
+        riegel = selectRiegelInput(records, 180, targetSec);
         stale = true;
       }
       if (riegel) {
@@ -61,6 +59,8 @@ export async function GET() {
         predictionSource = "riegel";
         predictionSourceLabel = `Riegel/${riegel.sourceLabel}`;
         predictionStale = stale;
+      } else if (records.length > 0) {
+        noRepresentativeEffort = true;
       }
     } catch { /* graceful */ }
   }
@@ -82,7 +82,11 @@ export async function GET() {
     data,
     isReal: predictedSec !== null,
     error: predictedSec === null
-      ? (service ? "Sem dados de corrida nos ultimos 180d (5K/10K/HM)" : "Freddy indisponivel")
+      ? (!service
+          ? "Freddy indisponivel"
+          : noRepresentativeEffort
+            ? "Sem esforco maximo recente — corre um 10K de controlo para prever"
+            : "Sem dados de corrida nos ultimos 180d (5K/10K/HM)")
       : undefined,
   });
 }

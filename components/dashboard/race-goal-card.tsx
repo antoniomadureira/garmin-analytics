@@ -45,7 +45,7 @@ function RaceGoalCardInner({ data, isReal, error }: { data: RaceGoalCardData; is
       day: "numeric",
       month: "short",
     });
-    const staleNote = predictionStale ? " — pode não refletir a forma atual" : "";
+    const staleNote = predictionStale ? " — corre um 10K de controlo para uma previsão atual" : "";
     return `${predictionSourceLabel} · ${datePt}${staleNote}`;
   })();
 

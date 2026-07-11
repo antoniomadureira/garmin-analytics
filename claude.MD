@@ -76,6 +76,13 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   Card e API route: app/api/dashboard/race-goal/route.ts (client-side fetch).
   CANDIDATES: HM>10K>5K (15K removido — nao coberto pelo Freddy).
   getCachedPersonalRecords: TTL 24h adicionado aos kv.set.
+  selectRiegelInput REESCRITO (2026-07-11): bug — HM a 5:08/km (treino fácil,
+  69d atrás) vencia sobre 10K a 3:46/km (118d atrás, fora da janela 70d) →
+  previsão 3:45 errada. Fix: filtro de representatividade (pace < goalPace ×
+  1.25 × 0.90; goalPace × 1.25 ≈ Z2 proxy); recolhe TODOS os qualificados por
+  categoria (não sai no 1º match); prefere distância maior mas penaliza
+  antiguidade (se o topo for >45d mais velho que o seguinte, troca). Com o
+  fix: 10K a 3:46 qualifica na janela 180d (stale) → previsão ≈2:53.
 - [Certo] Ramp rate (lib/analysis/training-stress.ts): consumido de wellness.rampRate
   (Intervals.icu, CTL/sem), NUNCA recalculado. Semáforo: <1.0 ok; 1.0-1.5 atenção;
   ≥1.5 sustentado 2+ semanas → alerta (verifica weekAgo com Date.UTC para evitar
@@ -97,8 +104,7 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   Regra: parser para fonte nova só com fixture REAL capturada antes.
 
 ## Testes e CI
-- Vitest, 265 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
-  (+3 records-cache, +1 monotonia inverso EWMA, +1 15K→null, total commit 2-4)
+- Vitest, 274 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
 - Fixtures REAIS em tests/fixtures/ — dados fisiológicos, .gitignore, NUNCA
   commitar. CI corre contra tests/fixtures-synthetic/ (estrutura real, valores falsos).
 - tools/capture-fixtures.ts recaptura output MCP real (npm run fixtures:capture, local).
@@ -114,6 +120,7 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
 - Composto de readiness: evoluir comparação de HRV para média 7d vs baseline 30-60d
   (uma noite vs média é ruidoso). Iteração, não bug.
 - Split de lib/freddy/metrics.ts (ainda ~2000 linhas) em módulos.
+[Provável] atlLoad em falta num dia isolado conta como carga 0 e subestima a monotonia — vigiar se o valor parecer baixo demais numa semana pesada.
 
 ## Roadmap
 - Feitos: 1 (cache), 2 (limpeza), 3 (testes+CI), 4 (auth), 5+7 (memória do coach
