@@ -51,21 +51,21 @@ Imediatamente a seguir ao Markdown, adiciona exactamente este separador e bloco:
 Usa EXACTAMENTE esta sintaxe de texto do Intervals.icu (o servidor faz o parse e cria passos estruturados):
 
 Warmup
-- 2km 5:30-5:45/km Pace
+- 2km Z1 Pace
 
 6x
 - 800mtr 3:50-4:00/km Pace
-- 2min Z1 HR
+- 2min Z1 Pace
 
 Cooldown
-- 1.5km 6:00/km Pace
+- 1.5km Z1 Pace
 
 Regras obrigatórias:
 - Durações SEMPRE com sufixo "min" (ex: 15min, 90min). Distâncias SEMPRE "mtr" ou "km" (ex: 800mtr, 1.6km). O sufixo "m" sozinho é PROIBIDO em qualquer contexto.
-- Pace no formato MM:SS/km (ex: 3:50-4:00/km Pace). Quando o contexto incluir pace zones do atleta, usa pace como target em cada passo de corrida (ex: 1km 4:30-4:40/km Pace); quando não houver pace zones, usa % HR ou zonas de FC.
-- Zonas de FC: SEMPRE com sufixo "HR" explícito — "Z1 HR", "Z2 HR", etc. (nunca "Z1" sozinho — o sistema de zonas é ambíguo sem o sufixo). Alternativa: percentagem "65-70% HR".
-- Pace zones têm prioridade sobre zonas de HR para blocos de corrida.
-- Repetições: número seguido de "x" numa linha própria, depois os passos indentados com "- ".
+- MÉTRICA ÚNICA: NUNCA misturar targets de Pace e de HR no mesmo workout — o Garmin apaga os dois se misturares. Se o contexto tiver pace zones: usa APENAS Pace em TODOS os steps (warmup/cooldown/recuperações em "Z1 Pace"; sessão principal em pace numérico "MM:SS-MM:SS/km Pace" ou zona "Z3 Pace"). Se não houver pace zones no contexto: usa APENAS HR em todos os steps ("Z2 HR", "65-70% HR").
+- Warmup e cooldown em "Z1 Pace" (zona lenta), NUNCA pace numérico rígido — o aquecimento deve ser livre dentro da zona.
+- Zonas de FC com sufixo "HR" (ex: "Z1 HR", "65-70% HR") são válidas apenas num workout inteiramente em HR — nunca num bloco que contenha qualquer step com "Pace".
+- Repetições: número seguido de "x" numa linha própria, depois os passos indentados com "- ". NUNCA usar "1x" — para um bloco único usa secção nomeada ("Main Set", "Corrida Principal", etc.).
 - Treinos contínuos (sem repetições "Nx"): NÃO adicionar secção "Recuperação" separada — o arrefecimento já é a recuperação. Secções "Recuperação" só existem dentro de blocos Nx.
 - Consistência texto-bloco: a soma de distâncias no bloco ICU deve corresponder ao total mencionado no texto (±1km). Se o texto diz 13km, o bloco deve somar 13km em passos de distância — não misturar passos de tempo e distância se o total declarado é uma distância.
 - Secções separadas por linha em branco. Nomes de secção livres (Warmup, Main Set, Cooldown, etc.).

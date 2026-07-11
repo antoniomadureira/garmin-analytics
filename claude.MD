@@ -104,7 +104,7 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   Regra: parser para fonte nova só com fixture REAL capturada antes.
 
 ## Testes e CI
-- Vitest, 274 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
+- Vitest, 303 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
 - Fixtures REAIS em tests/fixtures/ — dados fisiológicos, .gitignore, NUNCA
   commitar. CI corre contra tests/fixtures-synthetic/ (estrutura real, valores falsos).
 - tools/capture-fixtures.ts recaptura output MCP real (npm run fixtures:capture, local).
@@ -112,6 +112,7 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   optional deps transitivas do lockfile e o npm ci em Linux rebenta. Não "limpar".
 - npm audit: 2 moderate = postcss embutido no Next 15 (build-time, sem exposição
   real); só sai no Next 16. NUNCA npm audit fix --force (propõe downgrade p/ Next 9).
+-  [Certo] Cards de carga/decoupling têm linha de interpretação por limiares em código  (training-stress.ts, PrescribedVsExecutedCard) — texto determinístico, NUNCA do LLM. Síntese quando ramp E monotonia ambos ≥atenção. Só visível em atenção/alerta.
 
 ## Dúvidas conhecidas
 - Mover ReadinessCardData/RecoveryCardData para lib/types/ e apagar os componentes
@@ -121,6 +122,15 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   (uma noite vs média é ruidoso). Iteração, não bug.
 - Split de lib/freddy/metrics.ts (ainda ~2000 linhas) em módulos.
 [Provável] atlLoad em falta num dia isolado conta como carga 0 e subestima a monotonia — vigiar se o valor parecer baixo demais numa semana pesada.
+- [Certo] ICU↔Garmin sync — limitação de múltiplos targets: o Garmin só
+  aceita UM tipo de target por workout (Pace OU HR, nunca os dois). Misturar
+  — ex: warmup "65% HR" com main set "5:00/km Pace" — resulta em "No targets"
+  em todos os steps no relógio (bug confirmado por moderador ICU, sem ETA de fix;
+  fonte: forum.intervals.icu/t/syncing-pace-hr-targets-to-garmin/130238).
+  Fix: quando o contexto tem pace zones, todos os steps usam Pace (warmup/
+  cooldown/recuperações em "Z1 Pace"; sessão em pace numérico ou zona Pace).
+  HR% só quando não há pace zones no contexto. checkIcuConsistency detecta
+  mistura automaticamente (hasMixedMetrics → warning [coach:consistency]).
 
 ## Roadmap
 - Feitos: 1 (cache), 2 (limpeza), 3 (testes+CI), 4 (auth), 5+7 (memória do coach

@@ -13,6 +13,12 @@ export interface IcuBlockStats {
   hasIntervals: boolean;
   /** True se há secção "Recuperação/Recovery" fora de um bloco de repetição */
   hasSpuriousRecovery: boolean;
+  /**
+   * True se o bloco mistura steps com target "Pace" e steps com target "HR"
+   * no mesmo workout — o Garmin só processa um tipo de target e apaga ambos.
+   * [Certo] Limitação confirmada: forum.intervals.icu/t/syncing-pace-hr-targets-to-garmin/130238
+   */
+  hasMixedMetrics: boolean;
 }
 
 export interface ConsistencyResult {
@@ -33,6 +39,8 @@ export function parseIcuBlockStats(description: string): IcuBlockStats {
   let totalDurationMin = 0;
   let hasIntervals = false;
   let hasSpuriousRecovery = false;
+  let hasHrStep = false;
+  let hasPaceStep = false;
   let currentReps = 1;
   let inRepBlock = false;
 
@@ -64,6 +72,10 @@ export function parseIcuBlockStats(description: string): IcuBlockStats {
 
     const content = line.slice(1).trim();
 
+    // Mixed-metrics detection: HR vs Pace targets on step lines
+    if (/\bHR\b/i.test(content)) hasHrStep = true;
+    if (/\bPace\b/i.test(content)) hasPaceStep = true;
+
     // Distance steps: "10km", "800mtr"
     const kmMatch = content.match(/^(\d+(?:\.\d+)?)\s*km\b/i);
     const mtrMatch = content.match(/^(\d+(?:\.\d+)?)\s*mtr\b/i);
@@ -86,6 +98,7 @@ export function parseIcuBlockStats(description: string): IcuBlockStats {
     hasIntervals,
     // Spurious = recovery section AND no intervals anywhere in the block
     hasSpuriousRecovery: hasSpuriousRecovery && !hasIntervals,
+    hasMixedMetrics: hasHrStep && hasPaceStep,
   };
 }
 
@@ -127,6 +140,10 @@ export function checkIcuConsistency(textPart: string, icuDescription: string): C
 
   if (stats.hasSpuriousRecovery) {
     warnings.push("bloco ICU tem secção Recuperação/Recovery num treino contínuo (sem repetições)");
+  }
+
+  if (stats.hasMixedMetrics) {
+    warnings.push("workout mistura targets de Pace e de HR — o Garmin só processa um tipo; usa Pace em todos os steps");
   }
 
   // Unverifiable: ICU has explicit distance but text gave us nothing to compare against
