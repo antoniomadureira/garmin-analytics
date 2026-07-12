@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { selectPlannedWorkout, extractEvaluateVerdict } from "@/lib/coach/evaluate";
+import { selectPlannedWorkout, extractEvaluateVerdict, extractPlanFromMessage, buildReviewContext } from "@/lib/coach/evaluate";
 import type { IcuPlannedEvent } from "@/lib/intervals/client";
-import { SYSTEM_PROMPT_EVALUATE_SUFFIX } from "@/lib/coach/system-prompt";
+import { SYSTEM_PROMPT_EVALUATE_SUFFIX, SYSTEM_PROMPT_REVIEW_SUFFIX } from "@/lib/coach/system-prompt";
+import { secPerKmToMinSec } from "@/lib/coach/workout-history";
 
 const ICU_EVENT: IcuPlannedEvent = {
   id: 1,
@@ -121,5 +122,133 @@ describe("SYSTEM_PROMPT_EVALUATE_SUFFIX — conteúdo obrigatório", () => {
 
   it("não prescreve treino novo (instrução explícita)", () => {
     expect(SYSTEM_PROMPT_EVALUATE_SUFFIX).toMatch(/não.*prescrever|NÃO prescrever/i);
+  });
+
+  it("inclui regra de duração prescrita = todos os blocos (Bug 2b)", () => {
+    expect(SYSTEM_PROMPT_EVALUATE_SUFFIX).toMatch(/aquecimento.*sessão.*arrefecimento|todos os blocos/i);
+  });
+});
+
+// ─── Bug 1: pace format — 4.88 min/km → "4:53", nunca "4:88" ─────────────────
+
+describe("secPerKmToMinSec — formato min:sec correto", () => {
+  it("4.88 min/km → '4:53' (decimais convertidos, não '4:88')", () => {
+    // Bug: .toFixed(2) produzia "4.88min/km"; LLM formatava como "4:88"
+    // Fix: secPerKmToMinSec(Math.round(4.88 * 60)) = secPerKmToMinSec(293)
+    expect(secPerKmToMinSec(Math.round(4.88 * 60))).toBe("4:53");
+  });
+
+  it("5.0 min/km → '5:00'", () => {
+    expect(secPerKmToMinSec(Math.round(5.0 * 60))).toBe("5:00");
+  });
+
+  it("4.0 min/km → '4:00'", () => {
+    expect(secPerKmToMinSec(Math.round(4.0 * 60))).toBe("4:00");
+  });
+
+  it("4.5 min/km → '4:30'", () => {
+    expect(secPerKmToMinSec(Math.round(4.5 * 60))).toBe("4:30");
+  });
+});
+
+// ─── Bug 2a: extractPlanFromMessage — auto-deteção de plano ──────────────────
+
+describe("extractPlanFromMessage — auto-deteção de plano na mensagem", () => {
+  it("'o plano era 6x1km @ 4:10/km' → não null", () => {
+    expect(extractPlanFromMessage("o plano era 6x1km @ 4:10/km")).not.toBeNull();
+  });
+
+  it("'corri 8x1000m @ 3:55/km' → não null (padrão Nx)", () => {
+    expect(extractPlanFromMessage("corri 8x1000m @ 3:55/km, como estou?")).not.toBeNull();
+  });
+
+  it("'o prescrito era 10km Z2' → não null", () => {
+    expect(extractPlanFromMessage("o prescrito era 10km Z2")).not.toBeNull();
+  });
+
+  it("'@4:10/km' pattern → não null", () => {
+    expect(extractPlanFromMessage("estava previsto @4:10/km e corri mais rápido")).not.toBeNull();
+  });
+
+  it("mensagem genérica → null (não activa evaluate)", () => {
+    expect(extractPlanFromMessage("que treino devo fazer hoje?")).toBeNull();
+  });
+
+  it("pergunta de prontidão → null", () => {
+    expect(extractPlanFromMessage("estou apto para treinar amanhã?")).toBeNull();
+  });
+
+  it("retorna o texto trimmed quando detectado", () => {
+    const input = "  6x1km @ 4:10/km  ";
+    const result = extractPlanFromMessage(input);
+    expect(result).toBe("6x1km @ 4:10/km");
+  });
+});
+
+// ─── Bug 3: buildReviewContext — comparação pré-calculada ────────────────────
+
+const REVIEW_PLAN_ICU = { source: "icu" as const, name: "Intervalos 6x1km", text: "" };
+const REVIEW_PLAN_MANUAL = { source: "manual" as const, name: "Plano do dia", text: "6x1km @ 4:10" };
+
+describe("buildReviewContext — comparação execução vs plano", () => {
+  it("inclui distância e tempo executados", () => {
+    const exec = { distanceKm: 8.2, durationSec: 2100, paceMinPerKm: 4.3 };
+    const result = buildReviewContext(exec, REVIEW_PLAN_ICU, null);
+    expect(result).toContain("8.2km");
+    expect(result).toContain("35min");
+  });
+
+  it("pace dentro do alvo → 'dentro do alvo'", () => {
+    // 4:18/km = 258s; alvo 4:10-4:20/km = 250-260s
+    const exec = { distanceKm: 8.2, durationSec: 2100, paceMinPerKm: 258 / 60 };
+    const mainPace = { minSecPerKm: 250, maxSecPerKm: 260 };
+    const result = buildReviewContext(exec, REVIEW_PLAN_ICU, mainPace);
+    expect(result).toContain("dentro do alvo");
+  });
+
+  it("pace mais rápido → 'Xs mais rápido que o alvo'", () => {
+    // 4:00/km = 240s; alvo 4:10-4:20 = 250-260; 250-240 = 10s mais rápido
+    const exec = { distanceKm: 8.0, durationSec: 1920, paceMinPerKm: 240 / 60 };
+    const mainPace = { minSecPerKm: 250, maxSecPerKm: 260 };
+    const result = buildReviewContext(exec, REVIEW_PLAN_ICU, mainPace);
+    expect(result).toContain("10s mais rápido que o alvo");
+  });
+
+  it("pace mais lento → 'Xs mais lento que o alvo'", () => {
+    // 4:25/km = 265s; alvo 4:10-4:20 = 250-260; 265-260 = 5s mais lento
+    const exec = { distanceKm: 8.0, durationSec: 2120, paceMinPerKm: 265 / 60 };
+    const mainPace = { minSecPerKm: 250, maxSecPerKm: 260 };
+    const result = buildReviewContext(exec, REVIEW_PLAN_ICU, mainPace);
+    expect(result).toContain("5s mais lento que o alvo");
+  });
+
+  it("plano manual sem mainPace → sem tokens de desvio de pace", () => {
+    const exec = { distanceKm: 8.2, durationSec: 2100, paceMinPerKm: 4.3 };
+    const result = buildReviewContext(exec, REVIEW_PLAN_MANUAL, null);
+    expect(result).not.toContain("mais rápido");
+    expect(result).not.toContain("mais lento");
+    expect(result).not.toContain("dentro do alvo");
+    expect(result).toContain("8.2km");
+  });
+
+  it("pace null → mostra '—' em vez de erro", () => {
+    const exec = { distanceKm: 8.2, durationSec: 2100, paceMinPerKm: null };
+    const result = buildReviewContext(exec, REVIEW_PLAN_ICU, null);
+    expect(result).toContain("—");
+    expect(result).not.toThrow;
+  });
+
+  it("SYSTEM_PROMPT_REVIEW_SUFFIX inclui os 3 veredictos de execução", () => {
+    expect(SYSTEM_PROMPT_REVIEW_SUFFIX).toContain("✅");
+    expect(SYSTEM_PROMPT_REVIEW_SUFFIX).toContain("⚠️");
+    expect(SYSTEM_PROMPT_REVIEW_SUFFIX).toContain("🛑");
+  });
+
+  it("SYSTEM_PROMPT_REVIEW_SUFFIX proíbe ICU_WORKOUT", () => {
+    expect(SYSTEM_PROMPT_REVIEW_SUFFIX).toContain("---ICU_WORKOUT---");
+  });
+
+  it("SYSTEM_PROMPT_REVIEW_SUFFIX inclui regra de duração total", () => {
+    expect(SYSTEM_PROMPT_REVIEW_SUFFIX).toMatch(/aquecimento.*sessão.*arrefecimento|todos os blocos/i);
   });
 });

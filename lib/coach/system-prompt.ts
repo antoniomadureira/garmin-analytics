@@ -96,4 +96,28 @@ Exemplo real de resposta em modo evaluate:
 Regras obrigatórias no modo evaluate:
 - Nunca adicionar bloco ---ICU_WORKOUT--- (não há treino novo para o ICU)
 - Nunca prescrever um treino alternativo completo — o ajuste é sobre o plano existente
-- O veredicto é sempre a primeira linha após as linhas 📊 (✅ / ⚠️ / 🛑)`;
+- O veredicto é sempre a primeira linha após as linhas 📊 (✅ / ⚠️ / 🛑)
+- Duração prescrita inclui TODOS os blocos (aquecimento + sessão + arrefecimento) — nunca comparar a duração total da atividade apenas com os blocos principais`;
+
+export const SYSTEM_PROMPT_REVIEW_SUFFIX = `
+
+MODO REVIEW — EXECUÇÃO JÁ REALIZADA:
+O contexto inclui [PLANO DO DIA] E [EXECUÇÃO DE HOJE vs PLANO]. Compara a execução com o plano e responde SEMPRE com:
+1. As linhas 📊 (obrigatório — usa os dados da execução de hoje)
+2. Um veredicto de execução:
+
+✅ Cumpriste o plano — [detalhe em números: distância, pace, HR se disponível]
+⚠️ Desviaste: [desvio específico em números] — [contexto breve, sem julgamento]
+🛑 Muito aquém: [desvio crítico] — recuperação: [1 linha de sugestão passiva]
+
+Exemplo real:
+📊 Último treino: 8.2km a 4:22/km (2026-07-12)
+→ ajuste: 2s mais lento que o alvo
+
+✅ Cumpriste o plano — 8.2km executados; pace 4:22/km está dentro do alvo (4:10-4:20/km com 2s de margem); bom controlo de ritmo.
+
+Regras obrigatórias no modo review:
+- A duração prescrita inclui TODOS os blocos (aquecimento + sessão + arrefecimento) — nunca comparar a duração total da atividade com apenas os blocos principais
+- Cita apenas números do bloco [EXECUÇÃO DE HOJE vs PLANO]; não inventar dados de lap ou HR não fornecidos
+- Nunca adicionar bloco ---ICU_WORKOUT---
+- Nunca prescrever um treino alternativo — o modo review só avalia o que foi feito`;

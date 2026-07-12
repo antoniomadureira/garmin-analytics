@@ -7,10 +7,10 @@ import { loadRecentWorkoutDates, loadPrescription, parseIcuWorkout, savePrescrip
 import { loadExecution } from "@/lib/coach/execution-analysis";
 import { formatWorkoutHistory, secPerKmToMinSec } from "@/lib/coach/workout-history";
 import { loadGoal, formatGoalContext } from "@/lib/coach/goal-store";
-import { SYSTEM_PROMPT_BASE, SYSTEM_PROMPT_EVALUATE_SUFFIX } from "@/lib/coach/system-prompt";
+import { SYSTEM_PROMPT_BASE, SYSTEM_PROMPT_EVALUATE_SUFFIX, SYSTEM_PROMPT_REVIEW_SUFFIX } from "@/lib/coach/system-prompt";
 import { checkIcuConsistency } from "@/lib/coach/icu-consistency";
 import { computeWeeklyStressMetrics, formatStressContext } from "@/lib/analysis/training-stress";
-import { selectPlannedWorkout, extractEvaluateVerdict } from "@/lib/coach/evaluate";
+import { selectPlannedWorkout, extractEvaluateVerdict, extractPlanFromMessage, buildReviewContext } from "@/lib/coach/evaluate";
 import type { PrescribedWorkout, WorkoutExecution } from "@/lib/types/coach";
 import { getDecisionWellness } from "@/lib/utils/wellness";
 
@@ -36,12 +36,20 @@ function formatPaceRange(minSec: number | null, maxSec: number | null): string {
   return "?";
 }
 
-async function buildContextSummary(geo?: GeoHint, messages: ChatMessage[] = []): Promise<string> {
+type TodayRun = { distanceKm: number; durationSec: number; paceMinPerKm: number | null };
+
+async function buildContextSummary(
+  geo?: GeoHint,
+  messages: ChatMessage[] = [],
+): Promise<{ context: string; todayRuns: TodayRun[] }> {
   let service;
   try {
     service = await getFreddyDataService();
   } catch (err) {
-    return `[Sem ligação ao Freddy neste momento: ${String(err).slice(0, 150)}. Diz isto claramente ao utilizador em vez de inventar dados.]`;
+    return {
+      context: `[Sem ligação ao Freddy neste momento: ${String(err).slice(0, 150)}. Diz isto claramente ao utilizador em vez de inventar dados.]`,
+      todayRuns: [],
+    };
   }
 
   // [Certo] Corrigido rate limit confirmado: a versão anterior disparava
@@ -112,7 +120,10 @@ async function buildContextSummary(geo?: GeoHint, messages: ChatMessage[] = []):
   if (stressBlock) console.log("[coach:stress]", stressBlock);
   if (historyBlock) console.log("[coach:history]", historyBlock);
 
-  return [
+  // Extracted here so we can return them alongside the context string (for review mode)
+  const todayRuns = todayActivities.filter((a) => a.date === todayStr);
+
+  const context = [
     composed && composed.compositeScore !== null
       ? `[FONTE PRINCIPAL para "estou apto a treinar hoje", composto próprio de sinais frescos${composed.morningDate ? ` (sono/RHR da noite de ${composed.morningDate})` : ""}${composed.decisionDate ? ` (carga até ${composed.decisionDate})` : ""}]: Score composto ${composed.compositeScore}/100. Recomendação base: "${composed.recommendation}". Sinais individuais: ${composed.signals.map((s) => `${s.label}: ${s.detail} (${s.status})`).join("; ")}. Este composto é uma média simples e transparente de sinais frescos (TSB, HRV, FC repouso, sono, stress) — NÃO é o algoritmo oficial do Garmin, é a tua melhor aproximação dada a indisponibilidade do Training Readiness real. Usa isto como base principal da resposta, explica os sinais que mais pesaram, e dá uma recomendação concreta de tipo de treino (fácil/moderado/séries/descanso).`
       : "Sem sinais frescos suficientes para um composto de readiness (Intervals.icu pode estar indisponível neste momento).",
@@ -140,15 +151,17 @@ async function buildContextSummary(geo?: GeoHint, messages: ChatMessage[] = []):
       : "",
     latestLoad ? `ACWR (Garmin, complementar): status ${latestLoad.acwrStatus}, ratio ${latestLoad.acwrRatio}.` : "",
     (() => {
-      const todayRuns = todayActivities.filter((a) => a.date === todayStr);
       if (todayRuns.length === 0) return "Sem atividade registada hoje ainda.";
       const totalKm = todayRuns.reduce((s, a) => s + a.distanceKm, 0);
       const totalMin = Math.round(todayRuns.reduce((s, a) => s + a.durationSec, 0) / 60);
       const startTime = todayRuns[0].startTimeLocal;
       const timeStr = startTime ? ` às ${startTime}` : "";
-      return `[TREINO DE HOJE JÁ REALIZADO${timeStr} — REGRA: por defeito recomenda descanso ou recuperação passiva com justificação de carga; segunda sessão só se o utilizador pedir explicitamente]: ${todayRuns.length} atividade(s) hoje, ${totalKm.toFixed(1)}km em ${totalMin}min. ${
-        todayRuns.length > 0 ? `Pace médio: ${todayRuns[0].paceMinPerKm?.toFixed(2) ?? "—"}min/km.` : ""
-      }`;
+      // [Certo] Bug: .toFixed(2) produzia "4.88min/km" → LLM formatava como "4:88/km".
+      // Fix: converter para min:sec via secPerKmToMinSec (Math.round(pace * 60)).
+      const paceStr = todayRuns[0].paceMinPerKm != null
+        ? `${secPerKmToMinSec(Math.round(todayRuns[0].paceMinPerKm * 60))}/km`
+        : "—";
+      return `[TREINO DE HOJE JÁ REALIZADO${timeStr} — REGRA: por defeito recomenda descanso ou recuperação passiva com justificação de carga; segunda sessão só se o utilizador pedir explicitamente]: ${todayRuns.length} atividade(s) hoje, ${totalKm.toFixed(1)}km em ${totalMin}min. Pace médio: ${paceStr}.`;
     })(),
     running ? `Volume últimos 7 dias (summarized, pode não incluir hoje): ${running.totalDistanceKm} km em ${running.runCount} corridas.` : "Sem dados de volume semanal.",
     stressBlock,
@@ -157,6 +170,15 @@ async function buildContextSummary(geo?: GeoHint, messages: ChatMessage[] = []):
   ]
     .filter(Boolean)
     .join("\n");
+
+  return {
+    context,
+    todayRuns: todayRuns.map((r) => ({
+      distanceKm: r.distanceKm,
+      durationSec: r.durationSec,
+      paceMinPerKm: r.paceMinPerKm,
+    })),
+  };
 }
 
 
@@ -174,8 +196,17 @@ export async function POST(req: NextRequest) {
   if (messages.length === 0) {
     return NextResponse.json({ error: "Sem mensagens." }, { status: 400 });
   }
-  const manualPlan: string | null =
+  let manualPlan: string | null =
     typeof body?.plannedWorkout === "string" && body.plannedWorkout.trim() ? body.plannedWorkout.trim() : null;
+  // Auto-detect plan pasted into chat input when the field is empty
+  if (!manualPlan) {
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+    const autoDetected = extractPlanFromMessage(lastUserMsg);
+    if (autoDetected) {
+      manualPlan = autoDetected;
+      console.log("[coach:plan-autodetect]");
+    }
+  }
 
   // Mesma cadeia de resolução do dashboard: cookie geo (GPS) → env → geo-IP → default
   const geoCookie = req.cookies.get("geo")?.value;
@@ -195,15 +226,29 @@ export async function POST(req: NextRequest) {
   const icuEventPromise = manualPlan
     ? Promise.resolve(null)
     : getPlannedWorkoutForDate(todayStr).catch(() => null);
-  const [contextBase, icuEvent] = await Promise.all([buildContextSummary(geo, messages), icuEventPromise]);
+  const [{ context: contextBase, todayRuns }, icuEvent] = await Promise.all([
+    buildContextSummary(geo, messages),
+    icuEventPromise,
+  ]);
 
   // Priority: manual field > ICU event > null (prescribe mode)
   const plan = selectPlannedWorkout(manualPlan, icuEvent);
 
-  const context = plan
+  // Review mode: plan exists AND today's execution already happened
+  const reviewMode = plan !== null && todayRuns.length > 0;
+
+  let context = plan
     ? `${contextBase}\n[PLANO DO DIA — FONTE: ${plan.source === "icu" ? `Intervals.icu (${plan.name})` : "campo manual"}]:\n${plan.text}`
     : contextBase;
-  const systemPrompt = plan
+
+  if (reviewMode) {
+    const parsedPlan = plan!.source === "icu" ? parseIcuWorkout(plan!.name, plan!.text) : null;
+    context += `\n${buildReviewContext(todayRuns[0], plan!, parsedPlan?.mainPace ?? null)}`;
+  }
+
+  const systemPrompt = reviewMode
+    ? `${SYSTEM_PROMPT_BASE}${SYSTEM_PROMPT_REVIEW_SUFFIX}`
+    : plan
     ? `${SYSTEM_PROMPT_BASE}${SYSTEM_PROMPT_EVALUATE_SUFFIX}`
     : SYSTEM_PROMPT_BASE;
 
@@ -269,10 +314,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Evaluate mode: log verdict + save plan as prescription for memory continuity
+  // Evaluate/review mode: log verdict + save plan as prescription for memory continuity
   if (plan) {
     const verdict = extractEvaluateVerdict(reply);
-    console.log("[coach:evaluate]", { source: plan.source, verdict, name: plan.name });
+    const mode = reviewMode ? "review" : "evaluate";
+    console.log(`[coach:${mode}]`, { source: plan.source, verdict, name: plan.name });
     const prescription: PrescribedWorkout =
       plan.source === "icu"
         ? parseIcuWorkout(plan.name, plan.text)
@@ -284,6 +330,6 @@ export async function POST(req: NextRequest) {
     reply,
     icuWorkout: plan ? null : icuWorkout,
     consistencyWarning: plan ? null : consistencyWarning,
-    evaluateMode: !!plan,
+    evaluateMode: plan ? (reviewMode ? "review" : "evaluate") : false,
   });
 }
