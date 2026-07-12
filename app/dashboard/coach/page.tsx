@@ -31,6 +31,7 @@ export default function CoachPage() {
   const [pushUrls, setPushUrls] = useState<Record<number, string>>({});
   const [icuWorkouts, setIcuWorkouts] = useState<Record<number, { name: string; description: string }>>({});
   const [consistencyWarnings, setConsistencyWarnings] = useState<Record<number, string>>({});
+  const [plannedWorkout, setPlannedWorkout] = useState("");
 
   async function pushToIntervals(index: number) {
     const workout = icuWorkouts[index];
@@ -101,7 +102,10 @@ export default function CoachPage() {
       const res = await fetch("/api/coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: newMessages }),
+        body: JSON.stringify({
+          messages: newMessages,
+          ...(plannedWorkout.trim() ? { plannedWorkout: plannedWorkout.trim() } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -175,9 +179,25 @@ export default function CoachPage() {
           <div ref={bottomRef} />
         </div>
 
+        {/* Plano do dia — ativa modo evaluate quando preenchido */}
+        <div className="mb-3">
+          <label className="mb-1 block text-[10px] font-medium uppercase tracking-widest text-slate-600">
+            Plano de hoje <span className="normal-case tracking-normal text-slate-700">(opcional — ativa modo avaliar)</span>
+          </label>
+          <input
+            value={plannedWorkout}
+            onChange={(e) => setPlannedWorkout(e.target.value)}
+            placeholder="ex: 6x1km @ 4:10/km, rec 2min…"
+            className="w-full rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2 text-xs text-slate-300 outline-none focus:border-emerald-800 placeholder:text-slate-700"
+          />
+        </div>
+
         {messages.length <= 1 && (
           <div className="mb-3 flex flex-wrap gap-2">
-            {SUGGESTIONS.map((s) => (
+            {(plannedWorkout.trim()
+              ? ["Avalia o plano de hoje", "Devo ajustar alguma coisa?", "Estou pronto para este esforço?"]
+              : SUGGESTIONS
+            ).map((s) => (
               <button
                 key={s}
                 onClick={() => send(s)}

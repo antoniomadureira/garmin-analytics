@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 import { getAthleteZones } from "@/lib/strava-lab/client";
 import { getTodayWeather, getAirQuality, type GeoHint } from "@/lib/weather/client";
-import { getIcuPaceZones } from "@/lib/intervals/client";
-import { loadRecentWorkoutDates, loadPrescription } from "@/lib/coach/prescription-store";
+import { getIcuPaceZones, getPlannedWorkoutForDate } from "@/lib/intervals/client";
+import { loadRecentWorkoutDates, loadPrescription, parseIcuWorkout, savePrescription } from "@/lib/coach/prescription-store";
 import { loadExecution } from "@/lib/coach/execution-analysis";
 import { formatWorkoutHistory, secPerKmToMinSec } from "@/lib/coach/workout-history";
 import { loadGoal, formatGoalContext } from "@/lib/coach/goal-store";
-import { SYSTEM_PROMPT_BASE } from "@/lib/coach/system-prompt";
+import { SYSTEM_PROMPT_BASE, SYSTEM_PROMPT_EVALUATE_SUFFIX } from "@/lib/coach/system-prompt";
 import { checkIcuConsistency } from "@/lib/coach/icu-consistency";
 import { computeWeeklyStressMetrics, formatStressContext } from "@/lib/analysis/training-stress";
+import { selectPlannedWorkout, extractEvaluateVerdict } from "@/lib/coach/evaluate";
 import type { PrescribedWorkout, WorkoutExecution } from "@/lib/types/coach";
 import { getDecisionWellness } from "@/lib/utils/wellness";
 
@@ -173,6 +174,8 @@ export async function POST(req: NextRequest) {
   if (messages.length === 0) {
     return NextResponse.json({ error: "Sem mensagens." }, { status: 400 });
   }
+  const manualPlan: string | null =
+    typeof body?.plannedWorkout === "string" && body.plannedWorkout.trim() ? body.plannedWorkout.trim() : null;
 
   // Mesma cadeia de resolução do dashboard: cookie geo (GPS) → env → geo-IP → default
   const geoCookie = req.cookies.get("geo")?.value;
@@ -185,7 +188,24 @@ export async function POST(req: NextRequest) {
     city: cookieLat ? null : req.headers.get("x-vercel-ip-city"),
     source: cookieLat ? "cookie" : process.env.WEATHER_LAT ? "env" : vercelLat ? "vercel-geo-ip" : "default",
   };
-  const context = await buildContextSummary(geo, messages);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Parallel: context + ICU event (skip event fetch if manual plan already provided)
+  const icuEventPromise = manualPlan
+    ? Promise.resolve(null)
+    : getPlannedWorkoutForDate(todayStr).catch(() => null);
+  const [contextBase, icuEvent] = await Promise.all([buildContextSummary(geo, messages), icuEventPromise]);
+
+  // Priority: manual field > ICU event > null (prescribe mode)
+  const plan = selectPlannedWorkout(manualPlan, icuEvent);
+
+  const context = plan
+    ? `${contextBase}\n[PLANO DO DIA — FONTE: ${plan.source === "icu" ? `Intervals.icu (${plan.name})` : "campo manual"}]:\n${plan.text}`
+    : contextBase;
+  const systemPrompt = plan
+    ? `${SYSTEM_PROMPT_BASE}${SYSTEM_PROMPT_EVALUATE_SUFFIX}`
+    : SYSTEM_PROMPT_BASE;
 
   const groqRes = await fetch(GROQ_URL, {
     method: "POST",
@@ -196,7 +216,7 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({
       model: GROQ_MODEL,
       messages: [
-        { role: "system", content: `${SYSTEM_PROMPT_BASE}\n\nDados reais do atleta:\n${context}` },
+        { role: "system", content: `${systemPrompt}\n\nDados reais do atleta:\n${context}` },
         ...messages,
       ],
       temperature: 0.4,
@@ -249,5 +269,21 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ reply, icuWorkout, consistencyWarning });
+  // Evaluate mode: log verdict + save plan as prescription for memory continuity
+  if (plan) {
+    const verdict = extractEvaluateVerdict(reply);
+    console.log("[coach:evaluate]", { source: plan.source, verdict, name: plan.name });
+    const prescription: PrescribedWorkout =
+      plan.source === "icu"
+        ? parseIcuWorkout(plan.name, plan.text)
+        : { name: plan.name, sections: [], totalDurationSec: null, mainPace: null, rawBlock: plan.text };
+    savePrescription(todayStr, prescription).catch(() => {});
+  }
+
+  return NextResponse.json({
+    reply,
+    icuWorkout: plan ? null : icuWorkout,
+    consistencyWarning: plan ? null : consistencyWarning,
+    evaluateMode: !!plan,
+  });
 }

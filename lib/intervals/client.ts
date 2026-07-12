@@ -49,6 +49,37 @@ export async function pushWorkoutToIntervals(params: {
   return { id: data.id, url: `https://intervals.icu/calendar` };
 }
 
+export interface IcuPlannedEvent {
+  id: number;
+  name: string;
+  description: string | null;
+}
+
+/**
+ * Devolve o primeiro workout planeado no ICU para a data indicada.
+ * Retorna null se não há credenciais, sem eventos, ou em caso de erro.
+ */
+export async function getPlannedWorkoutForDate(dateStr: string): Promise<IcuPlannedEvent | null> {
+  const apiKey = process.env.INTERVALS_ICU_API_KEY;
+  const athleteId = process.env.INTERVALS_ICU_ATHLETE_ID;
+  if (!apiKey || !athleteId) return null;
+
+  const auth = Buffer.from(`API_KEY:${apiKey}`).toString("base64");
+  try {
+    const res = await fetch(
+      `${INTERVALS_API_BASE}/athlete/${athleteId}/events?oldest=${dateStr}&newest=${dateStr}&category=WORKOUT`,
+      { headers: { Authorization: `Basic ${auth}` } },
+    );
+    if (!res.ok) return null;
+    const events = (await res.json()) as Array<{ id: number; name?: string; description?: string | null }>;
+    const ev = events[0];
+    if (!ev) return null;
+    return { id: ev.id, name: ev.name ?? "Treino", description: ev.description ?? null };
+  } catch {
+    return null;
+  }
+}
+
 // [Suposição] Shape baseado na documentação da comunidade do Intervals.icu.
 // A secção "pace" pode estar ausente se o atleta não configurou zonas de
 // corrida; tratado defensivamente como resultado vazio.
