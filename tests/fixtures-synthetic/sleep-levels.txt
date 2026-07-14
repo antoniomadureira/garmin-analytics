@@ -1,0 +1,33 @@
+Health data (last 8 days):
+
+2024-01-08:
+  sleep_durationInSeconds: 17400 seconds (Garmin)
+    raw: {"calendarDate":"2024-01-08","sleepLevelsMap":{"rem":[{"startTimeInSeconds":1007800,"endTimeInSeconds":1013200}],"deep":[{"startTimeInSeconds":1001800,"endTimeInSeconds":1007200}],"awake":[{"startTimeInSeconds":1007200,"endTimeInSeconds":1007800}],"light":[{"startTimeInSeconds":1000000,"endTimeInSeconds":1001800},{"startTimeInSeconds":1013200,"endTimeInSeconds":1017400}]},"durationInSeconds":17400,"overallSleepScore":{"value":82,"qualifierKey":"GOOD"},"remSleepInSeconds":5400,"startTimeInSeconds":1000000,"awakeDurationInSeconds":600,"deepSleepDurationInSeconds":5400,"lightSleepDurationInSeconds":6000}
+
+2024-01-07:
+  sleep_durationInSeconds: 16200 seconds (Garmin)
+    raw: {"calendarDate":"2024-01-07","sleepLevelsMap":{"rem":[{"startTimeInSeconds":1092400,"endTimeInSeconds":1096600}],"deep":[{"startTimeInSeconds":1088200,"endTimeInSeconds":1091200}],"awake":[{"startTimeInSeconds":1091200,"endTimeInSeconds":1091800}],"light":[{"startTimeInSeconds":1086400,"endTimeInSeconds":1088200},{"startTimeInSeconds":1091800,"endTimeInSeconds":1092400},{"startTimeInSeconds":1096600,"endTimeInSeconds":1102600}]},"durationInSeconds":16200,"overallSleepScore":{"value":55,"qualifierKey":"POOR"},"remSleepInSeconds":4200,"startTimeInSeconds":1086400,"awakeDurationInSeconds":600,"deepSleepDurationInSeconds":3000,"lightSleepDurationInSeconds":8400}
+
+2024-01-06:
+  sleep_durationInSeconds: 16200 seconds (Garmin)
+    raw: {"calendarDate":"2024-01-06","sleepLevelsMap":{"rem":[{"startTimeInSeconds":1178800,"endTimeInSeconds":1183000}],"deep":[{"startTimeInSeconds":1174600,"endTimeInSeconds":1177600}],"awake":[{"startTimeInSeconds":1177600,"endTimeInSeconds":1178200}],"light":[{"startTimeInSeconds":1172800,"endTimeInSeconds":1174600},{"startTimeInSeconds":1178200,"endTimeInSeconds":1178800},{"startTimeInSeconds":1183000,"endTimeInSeconds":1189000}]},"durationInSeconds":16200,"overallSleepScore":{"value":58,"qualifierKey":"POOR"},"remSleepInSeconds":4200,"startTimeInSeconds":1172800,"awakeDurationInSeconds":600,"deepSleepDurationInSeconds":3000,"lightSleepDurationInSeconds":8400}
+
+2024-01-05:
+  sleep_durationInSeconds: 16200 seconds (Garmin)
+    raw: {"calendarDate":"2024-01-05","sleepLevelsMap":{"rem":[{"startTimeInSeconds":1265200,"endTimeInSeconds":1269400}],"deep":[{"startTimeInSeconds":1261000,"endTimeInSeconds":1264000}],"awake":[{"startTimeInSeconds":1264000,"endTimeInSeconds":1264600}],"light":[{"startTimeInSeconds":1259200,"endTimeInSeconds":1261000},{"startTimeInSeconds":1264600,"endTimeInSeconds":1265200},{"startTimeInSeconds":1269400,"endTimeInSeconds":1275400}]},"durationInSeconds":16200,"overallSleepScore":{"value":60,"qualifierKey":"FAIR"},"remSleepInSeconds":4200,"startTimeInSeconds":1259200,"awakeDurationInSeconds":600,"deepSleepDurationInSeconds":3000,"lightSleepDurationInSeconds":8400}
+
+2024-01-04:
+  sleep_durationInSeconds: 16200 seconds (Garmin)
+    raw: {"calendarDate":"2024-01-04","sleepLevelsMap":{"rem":[{"startTimeInSeconds":1354000,"endTimeInSeconds":1358200}],"deep":[{"startTimeInSeconds":1347400,"endTimeInSeconds":1352800}],"awake":[{"startTimeInSeconds":1352800,"endTimeInSeconds":1353400}],"light":[{"startTimeInSeconds":1345600,"endTimeInSeconds":1347400},{"startTimeInSeconds":1353400,"endTimeInSeconds":1354000},{"startTimeInSeconds":1358200,"endTimeInSeconds":1361800}]},"durationInSeconds":16200,"overallSleepScore":{"value":70,"qualifierKey":"FAIR"},"remSleepInSeconds":4200,"startTimeInSeconds":1345600,"awakeDurationInSeconds":600,"deepSleepDurationInSeconds":5400,"lightSleepDurationInSeconds":6000}
+
+2024-01-03:
+  sleep_durationInSeconds: 17400 seconds (Garmin)
+    raw: {"calendarDate":"2024-01-03","sleepLevelsMap":{"rem":[{"startTimeInSeconds":1439800,"endTimeInSeconds":1445200}],"deep":[{"startTimeInSeconds":1433800,"endTimeInSeconds":1439200}],"awake":[{"startTimeInSeconds":1439200,"endTimeInSeconds":1439800}],"light":[{"startTimeInSeconds":1432000,"endTimeInSeconds":1433800},{"startTimeInSeconds":1445200,"endTimeInSeconds":1449400}]},"durationInSeconds":17400,"overallSleepScore":{"value":80,"qualifierKey":"GOOD"},"remSleepInSeconds":5400,"startTimeInSeconds":1432000,"awakeDurationInSeconds":600,"deepSleepDurationInSeconds":5400,"lightSleepDurationInSeconds":6000}
+
+2024-01-02:
+  sleep_durationInSeconds: 17400 seconds (Garmin)
+    raw: {"calendarDate":"2024-01-02","sleepLevelsMap":{"rem":[{"startTimeInSeconds":1526200,"endTimeInSeconds":1531600}],"deep":[{"startTimeInSeconds":1520200,"endTimeInSeconds":1525600}],"awake":[{"startTimeInSeconds":1525600,"endTimeInSeconds":1526200}],"light":[{"startTimeInSeconds":1518400,"endTimeInSeconds":1520200},{"startTimeInSeconds":1531600,"endTimeInSeconds":1535800}]},"durationInSeconds":17400,"overallSleepScore":{"value":78,"qualifierKey":"FAIR"},"remSleepInSeconds":5400,"startTimeInSeconds":1518400,"awakeDurationInSeconds":600,"deepSleepDurationInSeconds":5400,"lightSleepDurationInSeconds":6000}
+
+2024-01-01:
+  sleep_durationInSeconds: 15600 seconds (Garmin)
+    raw: {"calendarDate":"2024-01-01","sleepLevelsMap":{},"durationInSeconds":15600,"overallSleepScore":{"value":72,"qualifierKey":"FAIR"},"remSleepInSeconds":4800,"startTimeInSeconds":1604800,"awakeDurationInSeconds":900,"deepSleepDurationInSeconds":4800,"lightSleepDurationInSeconds":5100}

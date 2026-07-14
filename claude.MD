@@ -111,8 +111,18 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   "|raw" na chave de cache. Fixture sintética icu-hr-zones.txt derivada de MCP real.
   Regra: parser para fonte nova só com fixture REAL capturada antes.
 [Certo] Server Components NUNCA passam funções como props a Client Components (RSC: props serializáveis) — passar um identificador string e resolver a função no lado client. O build NÃO apanha; só a página aberta em runtime. Regressão histórica: sleepHmTick como tickFormatter partiu /dashboard/sleep em produção.
+- [Certo] Hipnograma + alertas de fases do sono (2026-07-14): lib/analysis/sleep-phases.ts
+  exporta parseSleepPhaseBlocks (sleepLevelsMap → SleepPhaseBlock[] | null) e
+  computeSleepAlerts (escalares deepSec/remSec/awakeSec → string[]).
+  Limiares: profundo <60min, REM <90min, acordado >45min (3+ noites → alerta).
+  getSleepDetail() em metrics.ts usa mesma query de getSleepSummary mas devolve
+  SleepNightDetail (SleepSummary + startEpochSec + phaseBlocks). SleepHypnogram
+  é Client Component — recebe SleepPhaseBlock[] (serializável do RSC). Alertas em
+  /dashboard/sleep são determinísticos (NUNCA LLM). Em produção: REM alerta
+  confirmado vivo (REM consistentemente <90min nas últimas 8 noites reais).
+
 ## Testes e CI
-- Vitest, 367 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
+- Vitest, 390 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
 - Fixtures REAIS em tests/fixtures/ — dados fisiológicos, .gitignore, NUNCA
   commitar. CI corre contra tests/fixtures-synthetic/ (estrutura real, valores falsos).
 - tools/capture-fixtures.ts recaptura output MCP real (npm run fixtures:capture, local).

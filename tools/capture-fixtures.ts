@@ -109,6 +109,10 @@ const FIXTURES: Array<[string, ToolArgs]> = [
     "multi-day-mixed",
     { metrics: ["wellness_restingHR"], days: 14, include_raw: true },
   ],
+  [
+    "sleep-levels",
+    { metrics: ["sleep_durationInSeconds"], days: 8, include_raw: true },
+  ],
 ];
 
 async function main(): Promise<void> {

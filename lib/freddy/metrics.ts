@@ -78,6 +78,9 @@ import { kv } from "@/lib/redis";
 import { formatHrvDeltaPct, computeHrvDeviation } from "@/lib/utils/hrv";
 import { getDecisionWellness, getMorningWellness } from "@/lib/utils/wellness";
 import { aggregateIntensity, type WeeklyIntensityData } from "@/lib/analysis/intensity-distribution";
+import { parseSleepPhaseBlocks, type SleepPhaseBlock, type SleepLevelsMap } from "@/lib/analysis/sleep-phases";
+
+export type { SleepPhaseBlock } from "@/lib/analysis/sleep-phases";
 
 // -----------------------------------------------------------------------------
 // 1. CONST OBJECTS DE METRIC NAMES (agrupados por domínio funcional)
@@ -290,6 +293,11 @@ export interface SleepSummary {
   insight: string | null;
 }
 
+export interface SleepNightDetail extends SleepSummary {
+  startEpochSec: number | null;
+  phaseBlocks: SleepPhaseBlock[] | null;
+}
+
 export interface HrvSummary {
   date: string;
   lastNightAvgMsRmssd: number;
@@ -422,6 +430,15 @@ export class FreddyDataService {
       includeRaw: true,
     });
     return mapToSleepSummary(raw);
+  }
+
+  async getSleepDetail(days = 8): Promise<SleepNightDetail[]> {
+    const raw = await this.client.queryMetrics({
+      metrics: [SleepMetrics.durationSec],
+      days,
+      includeRaw: true,
+    });
+    return mapToSleepDetail(raw);
   }
 
   async getTrainingReadiness(days = 7): Promise<TrainingReadinessSummary[]> {
@@ -1638,6 +1655,8 @@ interface SleepRaw {
   awakeDurationInSeconds: number;
   overallSleepScore: { value: number; qualifierKey: string };
   calendarDate: string;
+  startTimeInSeconds?: number;
+  sleepLevelsMap?: SleepLevelsMap;
   sleepScores?: {
     stress?: { qualifierKey: string };
     restlessness?: { qualifierKey: string };
@@ -1652,26 +1671,37 @@ const SLEEP_QUALIFIER_LABELS: Record<string, string> = {
   EXCELLENT: "Excelente",
 };
 
+function sleepRawToSummary(date: string, r: SleepRaw): SleepSummary {
+  const qualifier = r.overallSleepScore?.qualifierKey;
+  return {
+    date,
+    durationSec: r.durationInSeconds,
+    deepSec: r.deepSleepDurationInSeconds,
+    lightSec: r.lightSleepDurationInSeconds,
+    remSec: r.remSleepInSeconds,
+    awakeSec: r.awakeDurationInSeconds,
+    overallScore: r.overallSleepScore?.value ?? null,
+    qualityScore: null,
+    recoveryScore: null,
+    feedback: qualifier ? (SLEEP_QUALIFIER_LABELS[qualifier] ?? qualifier) : null,
+    insight: r.sleepScores?.stress?.qualifierKey
+      ? `Stress durante o sono: ${SLEEP_QUALIFIER_LABELS[r.sleepScores.stress.qualifierKey] ?? r.sleepScores.stress.qualifierKey}`
+      : null,
+  };
+}
+
 function mapToSleepSummary(raw: Record<string, unknown>): SleepSummary[] {
-  const entries = Object.entries(raw) as [string, SleepRaw][];
-  return entries.map(([date, r]) => {
-    const qualifier = r.overallSleepScore?.qualifierKey;
-    return {
-      date,
-      durationSec: r.durationInSeconds,
-      deepSec: r.deepSleepDurationInSeconds,
-      lightSec: r.lightSleepDurationInSeconds,
-      remSec: r.remSleepInSeconds,
-      awakeSec: r.awakeDurationInSeconds,
-      overallScore: r.overallSleepScore?.value ?? null,
-      qualityScore: null, // [TODO] sleepFile_qualityScore é uma métrica separada, não testada ainda
-      recoveryScore: null, // idem, sleepFile_recoveryScore
-      feedback: qualifier ? (SLEEP_QUALIFIER_LABELS[qualifier] ?? qualifier) : null,
-      insight: r.sleepScores?.stress?.qualifierKey
-        ? `Stress durante o sono: ${SLEEP_QUALIFIER_LABELS[r.sleepScores.stress.qualifierKey] ?? r.sleepScores.stress.qualifierKey}`
-        : null,
-    };
-  });
+  return (Object.entries(raw) as [string, SleepRaw][]).map(([date, r]) =>
+    sleepRawToSummary(date, r)
+  );
+}
+
+function mapToSleepDetail(raw: Record<string, unknown>): SleepNightDetail[] {
+  return (Object.entries(raw) as [string, SleepRaw][]).map(([date, r]) => ({
+    ...sleepRawToSummary(date, r),
+    startEpochSec: r.startTimeInSeconds ?? null,
+    phaseBlocks: parseSleepPhaseBlocks(r.startTimeInSeconds, r.sleepLevelsMap),
+  }));
 }
 /**
  * [Certo] Dicionários de tradução para os códigos reais devolvidos por
