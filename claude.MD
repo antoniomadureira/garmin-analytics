@@ -63,6 +63,14 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   legado paceVsTargetSecPerKm (vs ponto médio) ignorado no display — era ambíguo
   (bug: "-23s/km" lido como défice de velocidade). Convenção: aritmética e
   comparações de pace nunca são do Llama — modelo cita texto pré-formatado.
+  [Certo] Coach linha → ajuste — 3 casos no system prompt: (a) desvio presente
+  nos dados → citar literalmente; (b) treino fácil/volume/recuperação sem alvo
+  ou "treino sem prescrição" → caracterizar pelo TIPO ("pace de volume correto"),
+  NUNCA comparar contra 4:15/km (race pace) — treinos fáceis são 45-90s/km mais
+  lentos por princípio 80/20; (c) "dentro do alvo" → citar. Bug anterior: o Llama
+  comparava 4:59/km vs 4:15 (race pace) e escrevia "44s mais lento que o alvo".
+  Diagnóstico timing Garmin→Freddy: se [coach:history] vazio na 1ª chamada e
+  preenchido na 2ª → timing (esperado, não bug); se presente e ignorado → confabulação (reportar).
 
 - [Certo] Previsao de maratona (card Rumo ao sub-3h): Garmin se fresco (<14d);
   Riegel (lib/analysis/race-prediction.ts, T2=T1*(D2/D1)^1.06) sobre melhor
@@ -104,7 +112,7 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   Regra: parser para fonte nova só com fixture REAL capturada antes.
 
 ## Testes e CI
-- Vitest, 322 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
+- Vitest, 367 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
 - Fixtures REAIS em tests/fixtures/ — dados fisiológicos, .gitignore, NUNCA
   commitar. CI corre contra tests/fixtures-synthetic/ (estrutura real, valores falsos).
 - tools/capture-fixtures.ts recaptura output MCP real (npm run fixtures:capture, local).
@@ -114,6 +122,19 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   real); só sai no Next 16. NUNCA npm audit fix --force (propõe downgrade p/ Next 9).
 -  [Certo] Cards de carga/decoupling têm linha de interpretação por limiares em código  (training-stress.ts, PrescribedVsExecutedCard) — texto determinístico, NUNCA do LLM. Síntese quando ramp E monotonia ambos ≥atenção. Só visível em atenção/alerta.
 
+- [Certo] Coach evaluate mode (lib/coach/evaluate.ts): quando o contexto tem
+  [PLANO DO DIA], o system prompt é SYSTEM_PROMPT_BASE + SYSTEM_PROMPT_EVALUATE_SUFFIX
+  e o modelo responde com veredicto ✅/⚠️/🛑 (código valida via extractEvaluateVerdict).
+  Prioridade de fontes: campo manual (body.plannedWorkout) > GET ICU events para hoje
+  (getPlannedWorkoutForDate, lib/intervals/client.ts) > nenhum (modo prescribe normal).
+  Plano guardado em Redis via savePrescription em cada evaluate — memória funciona para
+  treinos Kiprun sem ICU push. icuWorkout=null em evaluate mode (sem push button).
+  ICU events fetch corre em paralelo com buildContextSummary para não aumentar latência.
+  [Certo] Kiprun→Garmin→ICU: sync é UNIDIRECIONAL ICU→Garmin. Treinos Kiprun no
+  calendário Garmin NÃO chegam ao ICU automaticamente. FONTE 2 (ICU events) cobre
+  apenas eventos criados por nós (coach push) ou manualmente no ICU. Para treinos
+  Kiprun usar FONTE 1 (campo manual).
+
 ## Dúvidas conhecidas
 - Mover ReadinessCardData/RecoveryCardData para lib/types/ e apagar os componentes
   ReadinessCard/RecoveryCard (mortos desde o readiness-hero; ficheiros sobrevivem
@@ -122,6 +143,7 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   (uma noite vs média é ruidoso). Iteração, não bug.
 - Split de lib/freddy/metrics.ts (ainda ~2000 linhas) em módulos.
 [Provável] atlLoad em falta num dia isolado conta como carga 0 e subestima a monotonia — vigiar se o valor parecer baixo demais numa semana pesada.
+[evoluçãp conhecida] Se os "Ajusta" se tornarem frequentes na fase específica, a iteração seguinte é: veredicto ⚠️/🛑 oferece um botão "push do treino ajustado" que substitui o evento.
 - [Certo] ICU↔Garmin sync — limitação de múltiplos targets: o Garmin só
   aceita UM tipo de target por workout (Pace OU HR, nunca os dois). Misturar
   — ex: warmup "65% HR" com main set "5:00/km Pace" — resulta em "No targets"
@@ -149,6 +171,7 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   prescrito vs executado, decoupling, guardrails, formato 📊 validado em produção),
   6 (80/20 semanal), 8 (objetivo de prova + card Rumo ao sub-3h), 9 (ramp rate +
   monotony/strain), card Último Treino, consistência ICU, fixes de
-  localização/AQI/HRV/TSB/pace harmónico.
+  localização/AQI/HRV/TSB/pace harmónico, coach evaluate mode (campo Plano de hoje
+  + FONTE 2 ICU events, veredictos ✅/⚠️/🛑, prescrição guardada em Redis).
 - Depois: 10 (modelo p/ prescrição), 11 (encriptar tokens + LICENSE + template OSS),
   12 (hipnograma, race readiness 12 semanas).

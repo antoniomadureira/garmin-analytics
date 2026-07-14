@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { selectPlannedWorkout, extractEvaluateVerdict, extractPlanFromMessage, buildReviewContext } from "@/lib/coach/evaluate";
 import type { IcuPlannedEvent } from "@/lib/intervals/client";
-import { SYSTEM_PROMPT_EVALUATE_SUFFIX, SYSTEM_PROMPT_REVIEW_SUFFIX } from "@/lib/coach/system-prompt";
+import { SYSTEM_PROMPT_BASE, SYSTEM_PROMPT_EVALUATE_SUFFIX, SYSTEM_PROMPT_REVIEW_SUFFIX } from "@/lib/coach/system-prompt";
 import { secPerKmToMinSec } from "@/lib/coach/workout-history";
 
 const ICU_EVENT: IcuPlannedEvent = {
@@ -250,5 +250,28 @@ describe("buildReviewContext — comparação execução vs plano", () => {
 
   it("SYSTEM_PROMPT_REVIEW_SUFFIX inclui regra de duração total", () => {
     expect(SYSTEM_PROMPT_REVIEW_SUFFIX).toMatch(/aquecimento.*sessão.*arrefecimento|todos os blocos/i);
+  });
+});
+
+// ─── SYSTEM_PROMPT_BASE — regra 80/20 na linha → ajuste ──────────────────────
+
+describe("SYSTEM_PROMPT_BASE — regra 80/20 na linha → ajuste", () => {
+  it("instrução → ajuste tem 3 casos explícitos (a) (b) (c)", () => {
+    expect(SYSTEM_PROMPT_BASE).toContain("(a)");
+    expect(SYSTEM_PROMPT_BASE).toContain("(b)");
+    expect(SYSTEM_PROMPT_BASE).toContain("(c)");
+  });
+
+  it("proíbe comparação de treino fácil contra pace de maratona (80/20)", () => {
+    expect(SYSTEM_PROMPT_BASE).toMatch(/80\/20/);
+    expect(SYSTEM_PROMPT_BASE).toMatch(/NUNCA comparares contra o pace de maratona/);
+  });
+
+  it("inclui exemplo de treino fácil/volume com caracterização qualitativa", () => {
+    expect(SYSTEM_PROMPT_BASE).toContain("pace de volume correto para o dia seguinte");
+  });
+
+  it("caso (b) menciona 'treino sem prescrição' como sub-caso", () => {
+    expect(SYSTEM_PROMPT_BASE).toContain("treino sem prescrição");
   });
 });
