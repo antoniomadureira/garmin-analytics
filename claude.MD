@@ -110,7 +110,7 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   ao callTool — parser devolvia mapa vazio → zero barras. Fix: mcpArgs condicional +
   "|raw" na chave de cache. Fixture sintética icu-hr-zones.txt derivada de MCP real.
   Regra: parser para fonte nova só com fixture REAL capturada antes.
-
+[Certo] Server Components NUNCA passam funções como props a Client Components (RSC: props serializáveis) — passar um identificador string e resolver a função no lado client. O build NÃO apanha; só a página aberta em runtime. Regressão histórica: sleepHmTick como tickFormatter partiu /dashboard/sleep em produção.
 ## Testes e CI
 - Vitest, 367 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
 - Fixtures REAIS em tests/fixtures/ — dados fisiológicos, .gitignore, NUNCA
