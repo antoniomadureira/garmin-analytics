@@ -10,22 +10,36 @@ export interface TrendSeries {
   unit?: string;
 }
 
+// Named formatters — strings serializáveis passadas do Server Component via tickFormat.
+// A função vive aqui (Client Component); a página passa apenas o identificador.
+const TICK_FORMATTERS: Record<string, (v: number) => string> = {
+  hoursMinutes: (v: number) => {
+    if (v == null || isNaN(v)) return "";
+    const h = Math.floor(v);
+    const m = Math.round((v % 1) * 60);
+    return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, "0")}`;
+  },
+};
+
 export function TrendLineChart({
   title,
   data,
   series,
   yDomain,
   height = 220,
-  tickFormatter,
+  tickFormat,
 }: {
   title: string;
   data: Record<string, number | string | null>[];
   series: TrendSeries[];
   yDomain?: [number, number];
   height?: number;
-  /** Optional formatter for Y-axis ticks and tooltip values (e.g. decimal hours → "7h30"). */
-  tickFormatter?: (value: number) => string;
+  /** Named tick formatter — string serializável para compatibilidade com RSC.
+   *  "hoursMinutes": converte horas decimais para "Xh YY" (7.5 → "7h30"). */
+  tickFormat?: "hoursMinutes";
 }) {
+  const tickFormatter = tickFormat ? TICK_FORMATTERS[tickFormat] : undefined;
+
   return (
     <Card>
       <CardTitle>{title}</CardTitle>

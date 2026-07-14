@@ -18,12 +18,6 @@ function formatHm(totalSeconds: number): string {
   return `${h}h ${m}m`;
 }
 
-function sleepHmTick(hours: number): string {
-  const h = Math.floor(hours);
-  const m = Math.round((hours % 1) * 60);
-  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, "0")}`;
-}
-
 interface SleepPageData {
   scoreYesterday: number | null;
   durationYesterday: number; // segundos
@@ -128,7 +122,7 @@ export default async function SleepPage() {
           data={data.durationTrend}
           series={[{ key: "hours", color: "#22d3ee", label: "Duração" }]}
           yDomain={[0, 12]}
-          tickFormatter={sleepHmTick}
+          tickFormat="hoursMinutes"
         />
 
         <div className="flex justify-end"><DataFreshnessDot isReal={isReal} error={error} /></div>
