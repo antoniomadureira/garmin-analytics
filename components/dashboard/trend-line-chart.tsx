@@ -16,12 +16,15 @@ export function TrendLineChart({
   series,
   yDomain,
   height = 220,
+  tickFormatter,
 }: {
   title: string;
   data: Record<string, number | string | null>[];
   series: TrendSeries[];
   yDomain?: [number, number];
   height?: number;
+  /** Optional formatter for Y-axis ticks and tooltip values (e.g. decimal hours → "7h30"). */
+  tickFormatter?: (value: number) => string;
 }) {
   return (
     <Card>
@@ -45,10 +48,14 @@ export function TrendLineChart({
               axisLine={false}
               tickLine={false}
               width={40}
+              tickFormatter={tickFormatter}
             />
             <Tooltip
               contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", fontSize: 12 }}
               labelStyle={{ color: "#cbd5e1" }}
+              formatter={tickFormatter
+                ? (v: number, name: string): [string, string] => [tickFormatter(v), name]
+                : undefined}
             />
             {series.map((s) => (
               <Area
