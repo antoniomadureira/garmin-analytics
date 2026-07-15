@@ -120,7 +120,17 @@ Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
   é Client Component — recebe SleepPhaseBlock[] (serializável do RSC). Alertas em
   /dashboard/sleep são determinísticos (NUNCA LLM). Em produção: REM alerta
   confirmado vivo (REM consistentemente <90min nas últimas 8 noites reais).
-
+[Certo] Dev local com 404 em TODOS os assets (_next/static/*) ou erros
+  "Failed to read source code" de ficheiros que existem = ambiente
+  corrompido (cache .next misto ou processo node pendurado), NÃO bug de
+  código. Protocolo: Get-Process node | Stop-Process -Force →
+  Remove-Item -Recurse -Force .next → Test-Path do ficheiro acusado →
+  npm run dev. Não reverter commits por causa disto.
+  - [Certo] Fases do sono: estimadas por atigrafia — margem de erro
+  significativa vs polissonografia, sobretudo REM. O rodapé de humildade
+  no card é DELIBERADO (não remover); alertas valorizam tendências
+  (3+ noites), nunca noites isoladas. Fases NÃO entram no composto
+  (sleepScore já as pondera — dupla contagem).
 ## Testes e CI
 - Vitest, 390 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
 - Fixtures REAIS em tests/fixtures/ — dados fisiológicos, .gitignore, NUNCA
