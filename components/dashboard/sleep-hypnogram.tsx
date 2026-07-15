@@ -16,6 +16,13 @@ const PHASE_LABEL: Record<SleepPhaseBlock["phase"], string> = {
   awake: "Acordado",
 };
 
+const PHASE_TOOLTIP: Record<SleepPhaseBlock["phase"], string> = {
+  deep: "Sono profundo (N3) — restaura músculo e sistema imunitário; ocorre principalmente nas primeiras 3h. Prejudicado por álcool, horário irregular e temperatura alta.",
+  rem: "REM — consolida memória e processa emoções; concentra-se no fim da noite. Prejudicado por álcool, alarme precoce e ansiedade.",
+  light: "Sono leve (N1/N2) — fase de transição; mais fácil de interromper. Normal ser a fase mais longa.",
+  awake: "Acordado — alguns minutos são normais; mais de 45min total por noite é sinal de atenção.",
+};
+
 const LEGEND_PHASES: SleepPhaseBlock["phase"][] = ["deep", "rem", "light", "awake"];
 
 function fmtHours(sec: number): string {
@@ -79,10 +86,14 @@ export function SleepHypnogram({ blocks }: { blocks: SleepPhaseBlock[] }) {
           );
         })}
       </svg>
-      {/* Legend */}
+      {/* Legend — tooltips via title (cursor-help indica que há informação extra) */}
       <div className="mt-1.5 flex flex-wrap gap-3 text-[11px] text-slate-400">
         {LEGEND_PHASES.map((phase) => (
-          <span key={phase} className="flex items-center gap-1.5">
+          <span
+            key={phase}
+            className="flex cursor-help items-center gap-1.5"
+            title={PHASE_TOOLTIP[phase]}
+          >
             <span
               className="inline-block h-2 w-3 rounded-sm"
               style={{ backgroundColor: PHASE_COLOR[phase] }}
@@ -91,6 +102,10 @@ export function SleepHypnogram({ blocks }: { blocks: SleepPhaseBlock[] }) {
           </span>
         ))}
       </div>
+      {/* Nota de humildade — atigrafia tem concordância modesta com polissonografia */}
+      <p className="mt-2 text-[10px] text-slate-600">
+        Fases estimadas pelo relógio — margem de erro significativa; valoriza tendências, não noites isoladas.
+      </p>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import path from "path";
 import { parseSleepPhaseBlocks, computeSleepAlerts } from "@/lib/analysis/sleep-phases";
+import type { SleepAlert } from "@/lib/analysis/sleep-phases";
 import { parseQueryMetricsText } from "@/lib/freddy/data-adapter";
 
 const SYNTH = path.join(process.cwd(), "tests/fixtures-synthetic");
@@ -100,6 +101,8 @@ describe("parseSleepPhaseBlocks", () => {
 // ─── computeSleepAlerts ──────────────────────────────────────────────────────
 
 // 8 noites da fixture sintética (valores escalares)
+// avgDeep = (5400+3000+3000+3000+5400+5400+5400+4800)/8/60 = 73.75 → 74min
+// avgRem  = (5400+4200+4200+4200+4200+5400+5400+4800)/8/60 = 78.75 → 79min
 const NIGHTS_8 = [
   { deepSec: 5400, remSec: 5400, awakeSec: 600 }, // 2024-01-08 — deep ok, rem ok
   { deepSec: 3000, remSec: 4200, awakeSec: 600 }, // 2024-01-07 — deep low, rem low
@@ -108,23 +111,23 @@ const NIGHTS_8 = [
   { deepSec: 5400, remSec: 4200, awakeSec: 600 }, // 2024-01-04 — rem low only
   { deepSec: 5400, remSec: 5400, awakeSec: 600 }, // 2024-01-03 — ok
   { deepSec: 5400, remSec: 5400, awakeSec: 600 }, // 2024-01-02 — ok
-  { deepSec: 4800, remSec: 4800, awakeSec: 900 }, // 2024-01-01 — sem sleepLevelsMap (escalares presentes)
+  { deepSec: 4800, remSec: 4800, awakeSec: 900 }, // 2024-01-01 — rem low
 ];
 
 describe("computeSleepAlerts", () => {
   it("dispara deepLow com 3 noites deep<60min", () => {
     const alerts = computeSleepAlerts(NIGHTS_8);
-    expect(alerts.some((a) => a.includes("sono profundo"))).toBe(true);
+    expect(alerts.some((a) => a.id === "deep_low")).toBe(true);
   });
 
   it("dispara remLow com 5 noites rem<90min", () => {
     const alerts = computeSleepAlerts(NIGHTS_8);
-    expect(alerts.some((a) => a.includes("REM"))).toBe(true);
+    expect(alerts.some((a) => a.id === "rem_low")).toBe(true);
   });
 
   it("NÃO dispara fragmentado (0 noites awake>45min)", () => {
     const alerts = computeSleepAlerts(NIGHTS_8);
-    expect(alerts.some((a) => a.includes("fragmentado"))).toBe(false);
+    expect(alerts.some((a) => a.id === "fragmented")).toBe(false);
   });
 
   it("deepLow NÃO dispara com apenas 2 noites (threshold=3)", () => {
@@ -134,7 +137,7 @@ describe("computeSleepAlerts", () => {
       { deepSec: 5400, remSec: 5400, awakeSec: 600 },
     ];
     const alerts = computeSleepAlerts(nights);
-    expect(alerts.some((a) => a.includes("sono profundo"))).toBe(false);
+    expect(alerts.some((a) => a.id === "deep_low")).toBe(false);
   });
 
   it("fragmentado dispara com 3 noites awake>45min", () => {
@@ -144,7 +147,7 @@ describe("computeSleepAlerts", () => {
       { deepSec: 5400, remSec: 5400, awakeSec: 3000 },
     ];
     const alerts = computeSleepAlerts(nights);
-    expect(alerts.some((a) => a.includes("fragmentado"))).toBe(true);
+    expect(alerts.some((a) => a.id === "fragmented")).toBe(true);
   });
 
   it("retorna [] quando sem alertas", () => {
@@ -159,15 +162,53 @@ describe("computeSleepAlerts", () => {
     expect(computeSleepAlerts([])).toHaveLength(0);
   });
 
-  it("alerta deepLow tem mensagem de mitigação", () => {
+  it("alerta deepLow summary contém 'rever'", () => {
     const nights = Array(3).fill({ deepSec: 1800, remSec: 5400, awakeSec: 600 });
     const alerts = computeSleepAlerts(nights);
-    expect(alerts[0]).toContain("rever");
+    expect(alerts[0].summary).toContain("rever");
   });
 
   it("fixture sintética 8 noites — exatamente 2 alertas (deepLow + remLow)", () => {
     const alerts = computeSleepAlerts(NIGHTS_8);
     expect(alerts).toHaveLength(2);
+  });
+
+  // ── números interpolados ──────────────────────────────────────────────────
+
+  it("SleepAlert tem id, summary e detail", () => {
+    const nights = Array(3).fill({ deepSec: 1800, remSec: 5400, awakeSec: 600 });
+    const alert: SleepAlert = computeSleepAlerts(nights)[0];
+    expect(alert).toHaveProperty("id");
+    expect(alert).toHaveProperty("summary");
+    expect(alert).toHaveProperty("detail");
+  });
+
+  it("deepLow detail interpola média e menciona limiar 60min", () => {
+    // avgDeep = 74min (ver NIGHTS_8 acima)
+    const alerts = computeSleepAlerts(NIGHTS_8);
+    const a = alerts.find((x) => x.id === "deep_low")!;
+    expect(a.detail).toContain("74min");
+    expect(a.detail).toContain("60min");
+  });
+
+  it("remLow detail interpola média e menciona limiar 90min", () => {
+    // avgRem = 79min (ver NIGHTS_8 acima)
+    const alerts = computeSleepAlerts(NIGHTS_8);
+    const a = alerts.find((x) => x.id === "rem_low")!;
+    expect(a.detail).toContain("79min");
+    expect(a.detail).toContain("90min");
+  });
+
+  it("fragmented detail interpola média de minutos acordado", () => {
+    // 3 noites × 3000sec = 50min avg
+    const nights = [
+      { deepSec: 5400, remSec: 5400, awakeSec: 3000 },
+      { deepSec: 5400, remSec: 5400, awakeSec: 3000 },
+      { deepSec: 5400, remSec: 5400, awakeSec: 3000 },
+    ];
+    const alerts = computeSleepAlerts(nights);
+    const a = alerts.find((x) => x.id === "fragmented")!;
+    expect(a.detail).toContain("50min");
   });
 });
 

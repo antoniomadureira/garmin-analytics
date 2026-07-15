@@ -9,6 +9,7 @@ import { SleepHypnogram } from "@/components/dashboard/sleep-hypnogram";
 import { Card, CardTitle } from "@/components/ui/card";
 import { getFreddyDataService } from "@/lib/freddy/data-adapter";
 import { computeSleepAlerts } from "@/lib/analysis/sleep-phases";
+import type { SleepAlert } from "@/lib/analysis/sleep-phases";
 import { DataFreshnessDot } from "@/components/ui/data-freshness-dot";
 import type { SleepPhaseBlock } from "@/lib/freddy/metrics";
 
@@ -30,7 +31,7 @@ interface SleepPageData {
   durationTrend: { label: string; hours: number | null }[];
   phaseTrend: { label: string; deepMin: number | null; remMin: number | null }[];
   lastNightPhaseBlocks: SleepPhaseBlock[] | null;
-  alerts: string[];
+  alerts: SleepAlert[];
 }
 
 async function loadSleep(): Promise<{ data: SleepPageData; isReal: boolean; error?: string }> {
@@ -154,11 +155,12 @@ export default async function SleepPage() {
 
         {/* Alertas de limiares — texto determinístico, nunca LLM */}
         {data.alerts.length > 0 && (
-          <div className="space-y-1.5">
-            {data.alerts.map((alert, i) => (
-              <p key={i} className="rounded border border-amber-700/40 bg-amber-900/20 px-3 py-2 text-[12px] text-amber-400">
-                ⚠ {alert}
-              </p>
+          <div className="space-y-2">
+            {data.alerts.map((alert) => (
+              <div key={alert.id} className="rounded border border-amber-700/40 bg-amber-900/20 px-3 py-2.5">
+                <p className="text-[12px] font-medium text-amber-400">⚠ {alert.summary}</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-amber-400/70">{alert.detail}</p>
+              </div>
             ))}
           </div>
         )}

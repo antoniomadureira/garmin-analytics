@@ -16,6 +16,12 @@ export interface SleepPhaseBlock {
   durationSec: number;
 }
 
+export interface SleepAlert {
+  id: "deep_low" | "rem_low" | "fragmented";
+  summary: string;
+  detail: string;
+}
+
 const PHASE_ORDER: Array<SleepPhaseBlock["phase"]> = ["deep", "light", "rem", "awake"];
 
 /**
@@ -52,24 +58,44 @@ const AWAKE_HIGH_SEC = 45 * 60; // 45 min
 const NIGHTS_THRESHOLD = 3;
 
 /**
- * Returns human-readable alert strings when sustained patterns are detected
- * over the provided nights. Uses scalars (deepSec/remSec/awakeSec), not
- * phaseBlocks — works even for nights where sleepLevelsMap is absent.
- * Returns [] when no thresholds are exceeded.
+ * Returns SleepAlert objects when sustained patterns are detected over the
+ * provided nights. Uses scalars (deepSec/remSec/awakeSec), not phaseBlocks —
+ * works even for nights where sleepLevelsMap is absent.
+ * Each alert has: id for keying, summary (first line), detail (second sentence
+ * with interpolated real averages). Returns [] when no thresholds are exceeded.
  */
 export function computeSleepAlerts(
   nights: { deepSec: number; remSec: number; awakeSec: number }[]
-): string[] {
-  const alerts: string[] = [];
+): SleepAlert[] {
+  if (nights.length === 0) return [];
 
-  if (nights.filter((n) => n.deepSec < DEEP_LOW_SEC).length >= NIGHTS_THRESHOLD) {
-    alerts.push("sono profundo consistentemente baixo — rever horário/álcool/ecrãs");
+  const n = nights.length;
+  const avgDeepMin = Math.round(nights.reduce((s, x) => s + x.deepSec, 0) / n / 60);
+  const avgRemMin = Math.round(nights.reduce((s, x) => s + x.remSec, 0) / n / 60);
+  const avgAwakeMin = Math.round(nights.reduce((s, x) => s + x.awakeSec, 0) / n / 60);
+
+  const alerts: SleepAlert[] = [];
+
+  if (nights.filter((x) => x.deepSec < DEEP_LOW_SEC).length >= NIGHTS_THRESHOLD) {
+    alerts.push({
+      id: "deep_low",
+      summary: "sono profundo consistentemente baixo — rever horário/álcool/ecrãs",
+      detail: `Profundo médio ${avgDeepMin}min vs 60min recomendados — restaura músculo e sistema imunitário; ocorre nas primeiras horas. Ações: horário regular de deitar, temperatura do quarto amena, evitar exercício intenso 3h antes.`,
+    });
   }
-  if (nights.filter((n) => n.remSec < REM_LOW_SEC).length >= NIGHTS_THRESHOLD) {
-    alerts.push("REM consistentemente baixo — rever horário/álcool/ecrãs");
+  if (nights.filter((x) => x.remSec < REM_LOW_SEC).length >= NIGHTS_THRESHOLD) {
+    alerts.push({
+      id: "rem_low",
+      summary: "REM consistentemente baixo — rever horário/álcool/ecrãs",
+      detail: `REM médio ${avgRemMin}min vs 90min recomendados — consolida memória e recuperação cognitiva; concentra-se no fim da noite, por isso acordar cedo corta-o primeiro. Ações: horário de deitar regular, evitar álcool 3h antes, e se possível +30min de sono total.`,
+    });
   }
-  if (nights.filter((n) => n.awakeSec > AWAKE_HIGH_SEC).length >= NIGHTS_THRESHOLD) {
-    alerts.push("sono fragmentado — acordares frequentes durante a noite");
+  if (nights.filter((x) => x.awakeSec > AWAKE_HIGH_SEC).length >= NIGHTS_THRESHOLD) {
+    alerts.push({
+      id: "fragmented",
+      summary: "sono fragmentado — acordares frequentes durante a noite",
+      detail: `Acordado médio ${avgAwakeMin}min por noite — fragmentação reduz profundo e REM das fases seguintes. Ações: rever ambiente (temperatura, ruído, luz), limitar líquidos 2h antes, investigar apneia se persistir.`,
+    });
   }
 
   return alerts;
