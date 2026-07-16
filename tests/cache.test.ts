@@ -202,6 +202,74 @@ describe("(d) TTLs: today 15min, ontem 6h, passado 30d", () => {
   });
 });
 
+// ─── (e) auth/transient error — sentinel NOT written ──────────────────────
+//
+// Regressão: token Freddy expirado devolvia texto não reconhecido (não
+// "No data found") → parseToolResult retornava {} → writeCachedDates gravava
+// sentinel envenenado para todas as datas pedidas. Fix: texto não reconhecido
+// lança FreddyTransientError → cachedQueryMetrics não chega a writeCachedDates.
+
+describe("(e) auth/transient error — sentinel NOT written", () => {
+  it("auth error text → sem sentinel na cache, erro propagado", async () => {
+    const callTool = vi.fn().mockResolvedValue(
+      mcpText("Error: Authentication failed. Token expired.")
+    );
+    vi.mocked(getFreddyClient).mockResolvedValue(
+      makeMockClient(callTool) as never
+    );
+
+    await expect(
+      cachedQueryMetrics({
+        metrics: METRICS,
+        start: "2020-01-01",
+        end: "2020-01-01",
+        includeRaw: true,
+      })
+    ).rejects.toThrow();
+
+    expect(__store.has(cacheKey("2020-01-01"))).toBe(false);
+  });
+
+  it("auth error com hits parciais em cache → devolve hits, sem sentinel", async () => {
+    __store.set(cacheKey("2020-01-02"), { restingHR: 60 });
+
+    const callTool = vi.fn().mockResolvedValue(
+      mcpText("Error: Authentication failed. Token expired.")
+    );
+    vi.mocked(getFreddyClient).mockResolvedValue(
+      makeMockClient(callTool) as never
+    );
+
+    const result = await cachedQueryMetrics({
+      metrics: METRICS,
+      start: "2020-01-01",
+      end: "2020-01-02",
+      includeRaw: true,
+    });
+
+    expect(result["2020-01-02"]).toEqual({ restingHR: 60 });
+    expect(__store.has(cacheKey("2020-01-01"))).toBe(false);
+  });
+
+  it('"No data found" → grava sentinel (comportamento legítimo)', async () => {
+    const callTool = vi.fn().mockResolvedValue(
+      mcpText("No data found for metrics: wellness_restingHR.")
+    );
+    vi.mocked(getFreddyClient).mockResolvedValue(
+      makeMockClient(callTool) as never
+    );
+
+    await cachedQueryMetrics({
+      metrics: METRICS,
+      start: "2020-01-01",
+      end: "2020-01-01",
+      includeRaw: true,
+    });
+
+    expect(__store.get(cacheKey("2020-01-01"))).toBe("__no_data__");
+  });
+});
+
 // ─── readCachedDates contract ──────────────────────────────────────────────
 
 describe("readCachedDates", () => {

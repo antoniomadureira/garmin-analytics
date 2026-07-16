@@ -34,6 +34,19 @@ import { createHash } from "crypto";
  *      sentinels envenenados já gravados.
  */
 
+/**
+ * Lançado quando o Freddy responde com texto não reconhecível — erro de
+ * autenticação, rede, ou resposta inesperada do MCP. Distinto de "No data
+ * found" (vazio legítimo). cachedQueryMetrics não grava sentinel neste caso:
+ * o erro é transitório e os dados voltam sozinhos no primeiro load pós-fix.
+ */
+class FreddyTransientError extends Error {
+  constructor(msg: string) {
+    super(msg);
+    this.name = "FreddyTransientError";
+  }
+}
+
 const DATE_HEADER_RE = /^(\d{4}-\d{2}-\d{2})(?:T\d{2}:\d{2})?:\s*$/;
 
 function extractBalancedJson(text: string, startIndex: number): { json: string; endIndex: number } | null {
@@ -115,13 +128,15 @@ function parseToolResult(result: unknown, metrics: string[], contextLabel: strin
     if (Object.keys(parsed).length === 0) {
       console.warn(
         JSON.stringify({
-          evt: "freddy_unparseable_text",
+          evt: "freddy_transient_error",
           ctx: contextLabel,
           metrics,
           sample: firstText.slice(0, 200),
         })
       );
-      return {};
+      throw new FreddyTransientError(
+        `Unrecognized Freddy response (${contextLabel}): ${firstText.slice(0, 120)}`
+      );
     }
     return parsed;
   }
