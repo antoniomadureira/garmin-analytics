@@ -14,7 +14,7 @@ import {
   writeCachedDates,
   readCachedDates,
 } from "@/lib/freddy/cache";
-import { cachedQueryMetrics } from "@/lib/freddy/data-adapter";
+import { cachedQueryMetrics, cachedQueryRawText } from "@/lib/freddy/data-adapter";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -283,5 +283,69 @@ describe("readCachedDates", () => {
   it("reports null/undefined as miss", async () => {
     const { misses } = await readCachedDates(SIG, ["2020-01-01"]);
     expect(misses).toContain("2020-01-01");
+  });
+});
+
+// ─── (f) cachedQueryRawText — transient errors not cached ─────────────────
+//
+// Mesma classe de regressão que (e) mas para a cache de texto bruto usada
+// por getHrZonesWeekly. cachedQueryRawText não tinha qualquer guarda contra
+// texto de erro de auth — cacheava o texto vazio por 15min, fazendo o
+// gráfico de intensidade desaparecer até ao TTL expirar.
+
+describe("(f) cachedQueryRawText — auth/transient error não é cacheado", () => {
+  it("auth error text → lança FreddyTransientError, nenhuma escrita de cache", async () => {
+    const callTool = vi.fn().mockResolvedValue(
+      mcpText("Error: Authentication failed. Token expired.")
+    );
+    vi.mocked(getFreddyClient).mockResolvedValue(
+      makeMockClient(callTool) as never
+    );
+
+    await expect(
+      cachedQueryRawText({
+        metrics: ["activity_icu_hr_zone_times"],
+        start: "2020-01-01",
+        end: "2020-01-07",
+        includeRaw: true,
+      })
+    ).rejects.toThrow();
+
+    expect(__store.size).toBe(0);
+  });
+
+  it('"No data found" → não lança, texto retornado (vazio legítimo)', async () => {
+    const noDataText = "No data found for metrics: activity_icu_hr_zone_times.";
+    const callTool = vi.fn().mockResolvedValue(mcpText(noDataText));
+    vi.mocked(getFreddyClient).mockResolvedValue(
+      makeMockClient(callTool) as never
+    );
+
+    const result = await cachedQueryRawText({
+      metrics: ["activity_icu_hr_zone_times"],
+      start: "2020-01-01",
+      end: "2020-01-07",
+      includeRaw: true,
+    });
+
+    expect(result).toBe(noDataText);
+  });
+
+  it("resposta com datas → não lança, texto cacheado", async () => {
+    const dataText = "2020-01-03:\n  activity_icu_hr_zone_times: 3600 seconds\n    raw: {\"zones\":[100,200,300,0,0,0,0]}\n";
+    const callTool = vi.fn().mockResolvedValue(mcpText(dataText));
+    vi.mocked(getFreddyClient).mockResolvedValue(
+      makeMockClient(callTool) as never
+    );
+
+    const result = await cachedQueryRawText({
+      metrics: ["activity_icu_hr_zone_times"],
+      start: "2020-01-01",
+      end: "2020-01-07",
+      includeRaw: true,
+    });
+
+    expect(result).toBe(dataText);
+    expect(__store.size).toBeGreaterThan(0); // rawtext foi cacheado
   });
 });

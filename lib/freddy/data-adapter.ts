@@ -246,12 +246,24 @@ export async function cachedQueryMetrics(args: QueryArgs): Promise<Record<string
 }
 
 /**
+ * Texto legítimo do Freddy: "No data found" (vazio legítimo) ou qualquer
+ * resposta com pelo menos um cabeçalho de data (YYYY-MM-DD). Texto de erro
+ * de auth/rede não contém datas — falha este teste e não deve ser cacheado.
+ */
+function isLegitimateFreddyText(text: string): boolean {
+  if (text.startsWith("No data found")) return true;
+  return /\d{4}-\d{2}-\d{2}/.test(text);
+}
+
+/**
  * queryRawText com cache de pedido inteiro, TTL 15 min. Escrita com log
  * de diagnóstico: se falhar por tamanho (limite ~1MB do Upstash REST é o
  * suspeito para a página de performance lenta), o log diz os bytes —
  * decisão de compressão/chunking só depois de o log confirmar.
+ * Erros transitórios (auth/rede) lançam FreddyTransientError sem escrever
+ * em cache — os dados voltam sozinhos no primeiro load pós-reconnect.
  */
-async function cachedQueryRawText(args: { metrics: string[]; days?: number; start?: string; end?: string; includeRaw?: boolean }): Promise<string> {
+export async function cachedQueryRawText(args: { metrics: string[]; days?: number; start?: string; end?: string; includeRaw?: boolean }): Promise<string> {
   const { start, end } = args.start
     ? { start: args.start, end: args.end ?? args.start }
     : daysToRange(args.days ?? 7);
@@ -276,6 +288,19 @@ async function cachedQueryRawText(args: { metrics: string[]; days?: number; star
     if (!text) throw new Error("Resposta do query_metrics sem content de texto.");
     return text;
   });
+
+  if (!isLegitimateFreddyText(firstText)) {
+    console.warn(
+      JSON.stringify({
+        evt: "freddy_rawtext_transient_error",
+        metrics: args.metrics,
+        sample: firstText.slice(0, 200),
+      })
+    );
+    throw new FreddyTransientError(
+      `Unrecognized Freddy rawtext (${args.metrics.join(",")}): ${firstText.slice(0, 120)}`
+    );
+  }
 
   kv.set(key, firstText, { ex: 15 * 60 }).catch((e) =>
     console.warn(
