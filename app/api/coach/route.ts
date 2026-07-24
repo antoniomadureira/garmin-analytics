@@ -38,6 +38,26 @@ function formatPaceRange(minSec: number | null, maxSec: number | null): string {
 
 type TodayRun = { distanceKm: number; durationSec: number; paceMinPerKm: number | null };
 
+/** Tipos de atividade Garmin que são corrida. null → assumir corrida (retrocompat.). */
+const RUNNING_ACTIVITY_TYPES = new Set([
+  "RUNNING", "TRAIL_RUNNING", "TREADMILL_RUNNING", "INDOOR_RUNNING",
+  "TRACK_RUNNING", "VIRTUAL_RUNNING",
+]);
+
+type RecentAct = { distanceKm: number; durationSec: number; paceMinPerKm: number; startTimeLocal: string | null; activityType: string | null; activityName: string | null };
+
+function isRunningActivity(a: RecentAct): boolean {
+  if (a.activityType === null) return true; // tipo desconhecido → assume corrida (retrocompat.)
+  return RUNNING_ACTIVITY_TYPES.has(a.activityType.toUpperCase());
+}
+
+function formatCrossTrainingLabel(a: RecentAct): string {
+  const min = Math.round(a.durationSec / 60);
+  const label = a.activityName
+    ?? (a.activityType ? a.activityType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Atividade cruzada");
+  return `${label} ${min}min`;
+}
+
 async function buildContextSummary(
   geo?: GeoHint,
   messages: ChatMessage[] = [],
@@ -72,7 +92,7 @@ async function buildContextSummary(
     // [Certo] activity_* cobre os últimos ~35 dias com dados frescos —
     // é a única fonte que inclui treinos do próprio dia (summarizedActivity_*
     // tem atraso confirmado de ~30 dias). Pedido mínimo: 1 dia.
-    service.getRecentActivities(1).catch(() => []),
+    service.getRecentActivities(2).catch(() => []),
     getTodayWeather(geo).catch(() => null),
     // AQ e pace zones: APIs externas, nunca bloqueiam o coach se falharem
     (geo?.lat && geo?.lon ? getAirQuality(geo.lat, geo.lon) : Promise.resolve(null)).catch(() => null),
@@ -121,7 +141,12 @@ async function buildContextSummary(
   if (historyBlock) console.log("[coach:history]", historyBlock);
 
   // Extracted here so we can return them alongside the context string (for review mode)
-  const todayRuns = todayActivities.filter((a) => a.date === todayStr);
+  const yesterdayDate = new Date();
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterdayStr = yesterdayDate.toISOString().slice(0, 10);
+  const todayRuns = todayActivities.filter((a) => a.date === todayStr && isRunningActivity(a));
+  const todayCrossTraining = todayActivities.filter((a) => a.date === todayStr && !isRunningActivity(a));
+  const yesterdayCrossTraining = todayActivities.filter((a) => a.date === yesterdayStr && !isRunningActivity(a));
 
   const context = [
     composed && composed.compositeScore !== null
@@ -151,17 +176,29 @@ async function buildContextSummary(
       : "",
     latestLoad ? `ACWR (Garmin, complementar): status ${latestLoad.acwrStatus}, ratio ${latestLoad.acwrRatio}.` : "",
     (() => {
-      if (todayRuns.length === 0) return "Sem atividade registada hoje ainda.";
-      const totalKm = todayRuns.reduce((s, a) => s + a.distanceKm, 0);
-      const totalMin = Math.round(todayRuns.reduce((s, a) => s + a.durationSec, 0) / 60);
-      const startTime = todayRuns[0].startTimeLocal;
-      const timeStr = startTime ? ` às ${startTime}` : "";
-      // [Certo] Bug: .toFixed(2) produzia "4.88min/km" → LLM formatava como "4:88/km".
-      // Fix: converter para min:sec via secPerKmToMinSec (Math.round(pace * 60)).
-      const paceStr = todayRuns[0].paceMinPerKm != null
-        ? `${secPerKmToMinSec(Math.round(todayRuns[0].paceMinPerKm * 60))}/km`
-        : "—";
-      return `[TREINO DE HOJE JÁ REALIZADO${timeStr} — REGRA: por defeito recomenda descanso ou recuperação passiva com justificação de carga; segunda sessão só se o utilizador pedir explicitamente]: ${todayRuns.length} atividade(s) hoje, ${totalKm.toFixed(1)}km em ${totalMin}min. Pace médio: ${paceStr}.`;
+      if (todayRuns.length > 0) {
+        const totalKm = todayRuns.reduce((s, a) => s + a.distanceKm, 0);
+        const totalMin = Math.round(todayRuns.reduce((s, a) => s + a.durationSec, 0) / 60);
+        const startTime = todayRuns[0].startTimeLocal;
+        const timeStr = startTime ? ` às ${startTime}` : "";
+        // [Certo] Bug: .toFixed(2) produzia "4.88min/km" → LLM formatava como "4:88/km".
+        // Fix: converter para min:sec via secPerKmToMinSec (Math.round(pace * 60)).
+        const paceStr = todayRuns[0].paceMinPerKm != null
+          ? `${secPerKmToMinSec(Math.round(todayRuns[0].paceMinPerKm * 60))}/km`
+          : "—";
+        const xtraStr = todayCrossTraining.length > 0
+          ? ` Também hoje: ${todayCrossTraining.map(formatCrossTrainingLabel).join(", ")} (carga cruzada, já no ATL, não entra no volume de corrida).`
+          : "";
+        return `[TREINO DE HOJE JÁ REALIZADO${timeStr} — REGRA: por defeito recomenda descanso ou recuperação passiva com justificação de carga; segunda sessão só se o utilizador pedir explicitamente]: ${todayRuns.length} atividade(s) hoje, ${totalKm.toFixed(1)}km em ${totalMin}min. Pace médio: ${paceStr}.${xtraStr}`;
+      }
+      if (todayCrossTraining.length > 0) {
+        return `[TREINO CRUZADO HOJE — conta como carga (já no ATL), NÃO como corrida; segunda sessão de corrida só se o utilizador pedir explicitamente]: ${todayCrossTraining.map(formatCrossTrainingLabel).join(", ")}.`;
+      }
+      return "Sem atividade registada hoje ainda.";
+    })(),
+    (() => {
+      if (yesterdayCrossTraining.length === 0) return null;
+      return `[ONTEM — ATIVIDADE CRUZADA (não-corrida, não entra no volume de corrida mas conta como carga/ATL; o coach não deve assumir descanso completo ontem)]: ${yesterdayCrossTraining.map(formatCrossTrainingLabel).join(", ")}.`;
     })(),
     running ? `Volume últimos 7 dias (summarized, pode não incluir hoje): ${running.totalDistanceKm} km em ${running.runCount} corridas.` : "Sem dados de volume semanal.",
     stressBlock,

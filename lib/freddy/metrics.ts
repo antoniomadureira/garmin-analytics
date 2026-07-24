@@ -1507,33 +1507,60 @@ export class FreddyDataService {
   }
 
   async getRecentActivities(days = 30): Promise<
-    { date: string; distanceKm: number; durationSec: number; paceMinPerKm: number; elevationGainM: number | null; startTimeLocal: string | null }[]
+    {
+      date: string;
+      distanceKm: number;
+      durationSec: number;
+      paceMinPerKm: number;
+      elevationGainM: number | null;
+      startTimeLocal: string | null;
+      /** Ex: "RUNNING", "CYCLING", "STRENGTH_TRAINING"; null se o Freddy não devolver este campo. */
+      activityType: string | null;
+      /** Nome dado pelo utilizador à atividade (ex: "Padel @ Matosinhos"). */
+      activityName: string | null;
+    }[]
   > {
     if (!this.client.queryRawText) {
       throw new Error("Este client não implementa queryRawText — necessário para a lista de atividades.");
     }
     const text = await this.client.queryRawText({
-      metrics: [RunActivityMetrics.distanceM, RunActivityMetrics.durationSec, RunActivityMetrics.elevationGainM],
+      metrics: [
+        RunActivityMetrics.distanceM,
+        RunActivityMetrics.durationSec,
+        RunActivityMetrics.elevationGainM,
+        RunActivityMetrics.activityType,
+        RunActivityMetrics.activityName,
+      ],
       days,
     });
-    const distByDate = extractValuesByDate(text, RunActivityMetrics.distanceM);
-    const durByDate = extractValuesByDate(text, RunActivityMetrics.durationSec);
-    const elevByDate = extractValuesByDate(text, RunActivityMetrics.elevationGainM);
-    const timeByDate = extractFirstTimeByDate(text);
+    const distByDate  = extractValuesByDate(text, RunActivityMetrics.distanceM);
+    const durByDate   = extractValuesByDate(text, RunActivityMetrics.durationSec);
+    const elevByDate  = extractValuesByDate(text, RunActivityMetrics.elevationGainM);
+    const typeByDate  = extractStringValuesByDate(text, RunActivityMetrics.activityType);
+    const nameByDate  = extractStringValuesByDate(text, RunActivityMetrics.activityName);
+    const timeByDate  = extractFirstTimeByDate(text);
 
-    const out: { date: string; distanceKm: number; durationSec: number; paceMinPerKm: number; elevationGainM: number | null; startTimeLocal: string | null }[] = [];
+    const out: {
+      date: string; distanceKm: number; durationSec: number; paceMinPerKm: number;
+      elevationGainM: number | null; startTimeLocal: string | null;
+      activityType: string | null; activityName: string | null;
+    }[] = [];
     for (const [date, distances] of distByDate) {
-      const durations = durByDate.get(date) ?? [];
+      const durations  = durByDate.get(date)  ?? [];
       const elevations = elevByDate.get(date) ?? [];
+      const types      = typeByDate.get(date)  ?? [];
+      const names      = nameByDate.get(date)  ?? [];
       distances.forEach((distM, i) => {
         const durSec = durations[i] ?? 0;
         out.push({
           date,
-          distanceKm: roundTo(distM / 1000, 2),
-          durationSec: durSec,
-          paceMinPerKm: distM > 0 ? roundTo(durSec / 60 / (distM / 1000), 2) : 0,
+          distanceKm:    roundTo(distM / 1000, 2),
+          durationSec:   durSec,
+          paceMinPerKm:  distM > 0 ? roundTo(durSec / 60 / (distM / 1000), 2) : 0,
           elevationGainM: elevations[i] ?? null,
           startTimeLocal: i === 0 ? (timeByDate.get(date) ?? null) : null,
+          activityType:  types[i] ?? null,
+          activityName:  names[i] ?? null,
         });
       });
     }
