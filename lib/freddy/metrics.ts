@@ -1125,17 +1125,18 @@ export class FreddyDataService {
     };
 
     const days = weeks * 7;
+    // [Certo] NÃO misturar activity_icu_hr_zone_times com activity_* na mesma
+    // query: activity_* cobre só ~35 dias; o Freddy dropa datas sem ambos os
+    // metrics, apagando semanas >35 dias do gráfico (regressão 2026-07-24).
     const text = await this.client.queryRawText({
-      metrics: ["activity_icu_hr_zone_times", RunActivityMetrics.durationSec],
+      metrics: ["activity_icu_hr_zone_times"],
       days,
       includeRaw: true,
     });
 
     const icuZonesByDate = extractIcuHrZonesByDate(text);
-    // durationSec por data — soma de todas as atividades do dia (inclui Z0, independente da FC)
-    const durValuesByDate = extractValuesByDate(text, RunActivityMetrics.durationSec);
 
-    const weekMap = new Map<string, Array<{ zoneSeconds: number[]; durationSec: number }>>();
+    const weekMap = new Map<string, Array<{ zoneSeconds: number[] }>>();
 
     for (const [date, zonesArrays] of icuZonesByDate) {
       const monday = getMondayStr(date);
@@ -1144,9 +1145,8 @@ export class FreddyDataService {
       for (const zones of zonesArrays) {
         zones.forEach((s, i) => { zoneSeconds[i] += s; });
       }
-      const durationSec = (durValuesByDate.get(date) ?? []).reduce((s, d) => s + d, 0);
       if (!weekMap.has(monday)) weekMap.set(monday, []);
-      weekMap.get(monday)!.push({ zoneSeconds, durationSec });
+      weekMap.get(monday)!.push({ zoneSeconds });
     }
 
     // Constrói array das últimas N semanas (mais antiga primeiro)
