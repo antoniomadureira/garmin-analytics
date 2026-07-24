@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { pushWorkoutToIntervals } from "@/lib/intervals/client";
+import { pushWorkoutToIntervals, updateWorkoutInIntervals, getPlannedWorkoutForDate } from "@/lib/intervals/client";
 import { parseIcuWorkout, savePrescription } from "@/lib/coach/prescription-store";
 
 export async function POST(req: NextRequest) {
@@ -12,7 +12,12 @@ export async function POST(req: NextRequest) {
       ? date
       : new Date().toISOString().slice(0, 10);
 
-    const result = await pushWorkoutToIntervals({ name, description, dateStr });
+    // Se já existe um evento ICU para esta data, substitui em vez de criar um segundo.
+    const existing = await getPlannedWorkoutForDate(dateStr).catch(() => null);
+    const result = existing
+      ? await updateWorkoutInIntervals({ eventId: existing.id, name, description, dateStr })
+      : await pushWorkoutToIntervals({ name, description, dateStr });
+    console.log(JSON.stringify({ evt: "coach:push", action: existing ? "update" : "create", eventId: result.id, date: dateStr }));
 
     // Guardar prescrição estruturada em Redis (fire-and-forget — não bloqueia resposta)
     savePrescription(dateStr, parseIcuWorkout(name, description)).catch(() => {});

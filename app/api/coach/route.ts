@@ -268,13 +268,20 @@ export async function POST(req: NextRequest) {
   const icuEventPromise = manualPlan
     ? Promise.resolve(null)
     : getPlannedWorkoutForDate(todayStr).catch(() => null);
-  const [{ context: contextBase, todayRuns }, icuEvent] = await Promise.all([
+  const [{ context: contextBase, todayRuns }, icuEvent, savedPrescription] = await Promise.all([
     buildContextSummary(geo, messages),
     icuEventPromise,
+    loadPrescription(todayStr).catch(() => null),
   ]);
 
-  // Priority: manual field > ICU event > null (prescribe mode)
-  const plan = selectPlannedWorkout(manualPlan, icuEvent);
+  // Se o evento ICU foi criado por nós (nome === prescrição Redis), não entrar em evaluate:
+  // o utilizador quer treino novo, não avaliação do que já prescrevemos.
+  const icuEventIsOurs = icuEvent !== null && savedPrescription !== null && icuEvent.name === savedPrescription.name;
+  if (icuEventIsOurs) {
+    console.log(JSON.stringify({ evt: "coach:icu-own", name: icuEvent.name, action: "skip-evaluate" }));
+  }
+  // Priority: manual field > ICU event (not ours) > null (prescribe mode)
+  const plan = selectPlannedWorkout(manualPlan, icuEventIsOurs ? null : icuEvent);
 
   // Review mode: plan exists AND today's execution already happened
   const reviewMode = plan !== null && todayRuns.length > 0;
@@ -369,6 +376,9 @@ export async function POST(req: NextRequest) {
     const verdict = extractEvaluateVerdict(reply);
     const mode = reviewMode ? "review" : "evaluate";
     console.log(`[coach:${mode}]`, { source: plan.source, verdict, name: plan.name });
+    if (mode === "evaluate" && icuRaw !== null && verdict === null) {
+      console.log(JSON.stringify({ evt: "coach:mode-mismatch", mode: "evaluate", hasIcuBlock: true, verdict: null }));
+    }
     const prescription: PrescribedWorkout =
       plan.source === "icu"
         ? parseIcuWorkout(plan.name, plan.text)
