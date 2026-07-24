@@ -247,7 +247,7 @@ describe("checkIcuConsistency — hasZonePace", () => {
 // ─── extractTextTotalDistance ─────────────────────────────────────────────
 
 describe("extractTextTotalDistance", () => {
-  it("extrai 13.5km do caso real", () => {
+  it("extrai 13.5km do caso real (total narrativo na prosa)", () => {
     expect(extractTextTotalDistance(REAL_CASE_TEXT)).toBeCloseTo(13.5, 1);
   });
 
@@ -255,12 +255,35 @@ describe("extractTextTotalDistance", () => {
     expect(extractTextTotalDistance("treino de 13,5km hoje")).toBeCloseTo(13.5, 1);
   });
 
-  it("ignora distâncias < 3km (passos individuais)", () => {
+  it("ignora distâncias < 3km na prosa (passos individuais)", () => {
     expect(extractTextTotalDistance("aquecimento de 1km e 800mtr de series")).toBeNull();
   });
 
   it("retorna null se não há menção de km", () => {
     expect(extractTextTotalDistance("treino de 45min fácil")).toBeNull();
+  });
+
+  it("secções com km nos cabeçalhos (sem total narrativo) → soma as secções", () => {
+    const text = [
+      "**Aquecimento:** 2km a 6:00-6:30/km (FC < 140bpm)",
+      "**Sessão Principal:** 8km a 4:30-4:45/km (FC < 165bpm)",
+      "**Arrefecimento:** 1.5km a 6:00-6:30/km (FC < 130bpm)",
+    ].join("\n");
+    expect(extractTextTotalDistance(text)).toBeCloseTo(11.5, 1);
+  });
+
+  it("cabeçalho de secção único (< 2) sem prosa → null (incerto)", () => {
+    const text = "**Sessão Principal:** 8km a 4:30-4:45/km (FC < 165bpm)";
+    expect(extractTextTotalDistance(text)).toBeNull();
+  });
+
+  it("total narrativo tem prioridade sobre cabeçalhos de secção", () => {
+    // Prosa menciona 13.5km, secção tem 10km — prosa vence
+    const text = [
+      "Treino de 13.5km a pace confortável.",
+      "**Sessão Principal:** 10km a 4:45-5:00/km (FC < 150bpm)",
+    ].join("\n");
+    expect(extractTextTotalDistance(text)).toBeCloseTo(13.5, 1);
   });
 });
 
@@ -308,6 +331,51 @@ describe("checkIcuConsistency — sem inconsistência (estado: consistente)", ()
     // 0.5km / 10km = 5% < 20% → sem warning
     expect(result.warning).toBeNull();
     expect(result.unverifiable).toBe(false);
+  });
+});
+
+// ─── checkIcuConsistency — falso positivo de secções ────────────────────
+// Regressão: extractTextTotalDistance apanhava só o maior passo (8km de Principal)
+// e comparava com o total ICU (11.5km) → alerta falso de 44%.
+// Fix: quando o texto tem secções com km mas sem total narrativo → soma as secções.
+
+const SECTIONS_ICU = `Warmup
+- 2km 6:00-6:30/km Pace
+
+Main Set
+- 8km 4:30-4:45/km Pace
+
+Cooldown
+- 1.5km 6:00-6:30/km Pace`;
+
+const SECTIONS_TEXT = `📊 Último treino: 12.0km a 5:00/km (2026-07-20)
+→ ajuste: pace de volume correto — hoje subo intensidade.
+
+### 🏃 Corrida de Limiar
+TSB positivo, bom momento para trabalho de qualidade.
+
+**Aquecimento:** 2km a 6:00-6:30/km (FC < 140bpm)
+**Sessão Principal:** 8km a 4:30-4:45/km (FC < 165bpm)
+**Arrefecimento:** 1.5km a 6:00-6:30/km (FC < 130bpm)
+
+**🎯 Objetivo:** limiar aeróbico
+**💡 Pós-Treino:** hidratação e alongamentos 10min`;
+
+describe("checkIcuConsistency — falso positivo de secções (fix)", () => {
+  it("texto 2km+8km+1.5km vs ICU 11.5km → consistente, sem warning", () => {
+    const result = checkIcuConsistency(SECTIONS_TEXT, SECTIONS_ICU);
+    expect(result.warning).toBeNull();
+    expect(result.unverifiable).toBe(false);
+    expect(result.textDistanceKm).toBeCloseTo(11.5, 1);
+    expect(result.icuDistanceKm).toBeCloseTo(11.5, 1);
+  });
+
+  it("caso do bug original (texto 13.5km vs ICU 10km) → continua a disparar", () => {
+    // REAL_CASE_TEXT/ICU: prosa menciona 13.5km mas ICU só tem 10km explícitos
+    const result = checkIcuConsistency(REAL_CASE_TEXT, REAL_CASE_ICU);
+    expect(result.warning).not.toBeNull();
+    expect(result.warning).toContain("13.5km");
+    expect(result.warning).toContain("10.0km");
   });
 });
 

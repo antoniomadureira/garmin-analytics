@@ -121,19 +121,45 @@ export function parseIcuBlockStats(description: string): IcuBlockStats {
 }
 
 /**
- * Extrai a primeira menção de distância >= 3km do texto (parte markdown).
- * Ignora as linhas 📊/→ (referem o treino ANTERIOR, não o prescrito).
- * Aceita "13.5km", "13,5 km", etc. Ignora valores < 3km (passos individuais).
+ * Extrai a distância total do texto (parte markdown), distinguindo entre
+ * um total narrativo e uma lista de secções (Aquecimento + Principal + Arrefecimento).
+ *
+ * Estratégia:
+ * 1. Ignora linhas 📊/→ (referem o treino ANTERIOR).
+ * 2. Separa linhas de cabeçalho de secção ("**Label:**") das linhas de prosa.
+ * 3. Se há menção ≥ 3km na prosa → é o total narrativo; usa-o (comportamento anterior).
+ * 4. Sem total narrativo: soma os km encontrados nos cabeçalhos de secção (≥ 2
+ *    cabeçalhos com km), que correspondem a Aquecimento + Principal + Arrefecimento.
+ * 5. Sem dados suficientes → null (unverifiable em checkIcuConsistency).
+ *
+ * Evita falso positivo quando o coach lista secções sem mencionar o total:
+ * "**Aquecimento:** 2km / **Principal:** 8km / **Arrefecimento:** 1.5km" → 11.5km.
  */
 export function extractTextTotalDistance(text: string): number | null {
-  // Skip the 📊 history header and → ajuste line — they mention the last workout distance
-  const body = text
+  const bodyLines = text
     .split("\n")
-    .filter((l) => !l.startsWith("📊") && !l.startsWith("→"))
-    .join("\n");
-  const matches = [...body.matchAll(/(\d+(?:[.,]\d+)?)\s*km\b/gi)];
-  const values = matches.map((m) => parseFloat(m[1].replace(",", ".")));
-  return values.find((v) => v >= 3) ?? null;
+    .filter((l) => !l.startsWith("📊") && !l.startsWith("→"));
+
+  // Section-header lines: "**Label:** content" — bold label followed by colon
+  const isHeaderLine = (l: string) => /^\*\*[^*]+:\*\*/.test(l.trim());
+  const paragraphText = bodyLines.filter((l) => !isHeaderLine(l)).join("\n");
+  const headerText = bodyLines.filter(isHeaderLine).join("\n");
+
+  // Step 3: narrative total in prose (first km mention ≥ 3km outside section headers)
+  const proseMentions = [...paragraphText.matchAll(/(\d+(?:[.,]\d+)?)\s*km\b/gi)]
+    .map((m) => parseFloat(m[1].replace(",", ".")))
+    .filter((v) => v >= 3);
+  if (proseMentions.length > 0) return proseMentions[0];
+
+  // Step 4: sum of section-header km values (require ≥ 2 to be confident)
+  const sectionValues = [...headerText.matchAll(/(\d+(?:[.,]\d+)?)\s*km\b/gi)]
+    .map((m) => parseFloat(m[1].replace(",", ".")))
+    .filter((v) => v >= 0.5);
+  if (sectionValues.length >= 2) {
+    return Math.round(sectionValues.reduce((a, b) => a + b, 0) * 100) / 100;
+  }
+
+  return null;
 }
 
 /**

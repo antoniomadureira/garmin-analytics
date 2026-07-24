@@ -8,3 +8,6 @@ tsconfig.tsbuildinfo
 
 # Real Freddy fixtures — stay local, never committed
 tests/fixtures/
+
+# Strava/personal activity exports — dados pessoais, nunca commitar
+tests/activities/

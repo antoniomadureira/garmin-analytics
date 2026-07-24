@@ -495,3 +495,37 @@ describe("formatWorkoutHistory — desvio de pace (texto direcional)", () => {
     expect(result).not.toContain("dentro do alvo");
   });
 });
+
+// ─── formatWorkoutHistory — filtro de atividades fantasma ────────────────────
+
+describe("formatWorkoutHistory — atividades fantasma ignoradas", () => {
+  function makeGhostByDist(): WorkoutExecution {
+    return { ...EXEC_SAMPLE, distanceKm: 0.1, durationSec: 3540, avgPaceMinPerKm: 589 };
+  }
+  function makeGhostByPace(): WorkoutExecution {
+    return { ...EXEC_SAMPLE, distanceKm: 2.0, durationSec: 3600, avgPaceMinPerKm: 30 };
+  }
+
+  it("execução fantasma por distância (<1km) com prescrição → 'sem execução registada'", () => {
+    const result = formatWorkoutHistory([
+      { date: "2026-07-23", prescribed: PRESC_SAMPLE, executed: makeGhostByDist() },
+    ]);
+    expect(result).toContain("sem execução registada");
+    expect(result).not.toContain("0.1km");
+  });
+
+  it("execução fantasma por pace (>15:00/km) com prescrição → 'sem execução registada'", () => {
+    const result = formatWorkoutHistory([
+      { date: "2026-07-23", prescribed: PRESC_SAMPLE, executed: makeGhostByPace() },
+    ]);
+    expect(result).toContain("sem execução registada");
+    expect(result).not.toContain("30:");
+  });
+
+  it("execução fantasma sem prescrição → par filtrado (string vazia)", () => {
+    const result = formatWorkoutHistory([
+      { date: "2026-07-23", prescribed: null, executed: makeGhostByDist() },
+    ]);
+    expect(result).toBe("");
+  });
+});

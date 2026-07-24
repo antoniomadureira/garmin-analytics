@@ -34,4 +34,20 @@ describe("getLastActivityDate", () => {
     ];
     expect(getLastActivityDate(daily)).toBe("2026-07-05");
   });
+
+  it("atividade fantasma (0.1km) seguida de real (15km) → devolve a real", () => {
+    const daily = [
+      { date: "2026-07-22", km: 15 },
+      { date: "2026-07-23", km: 0.1 },
+    ];
+    expect(getLastActivityDate(daily)).toBe("2026-07-22");
+  });
+
+  it("apenas atividades fantasma → null (sem treino recente)", () => {
+    const daily = [
+      { date: "2026-07-21", km: 0.1 },
+      { date: "2026-07-22", km: 0.05 },
+    ];
+    expect(getLastActivityDate(daily)).toBeNull();
+  });
 });

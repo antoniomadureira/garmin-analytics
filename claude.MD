@@ -2,196 +2,170 @@
 
 App pessoal single-user (Next.js 15, Vercel Hobby, free tier). Dados via
 Freddy MCP (Garmin), Intervals.icu e strava-lab. Coach IA: Groq Llama 3.3 70B.
-Utilizador: corredor em Matosinhos/Porto, objetivo maratona sub-3h.
+Utilizador: corredor em Matosinhos/Porto, objetivo Maratona de Lisboa
+10/10/2026 sub-3h (4:15/km). Plano principal: Kiprun Pace (evidência empírica
+do utilizador); o coach da app é AVALIADOR/vigia, não planeador primário.
 
 ## Convenções de trabalho
 - Anotar afirmações no código com [Certo]/[Provável]/[Suposição].
-- Bug em produção = capturar fixture + escrever teste que o reproduz ANTES do fix.
+- Bug em produção = capturar fixture real + teste que o reproduz ANTES do fix.
+- Fonte de dados nova = fixture REAL capturada primeiro (fixtures:capture);
+  sintéticas só derivadas de reais.
+- "Feito" = pushed + Actions verde + CONFIRMADO NO ECRÃ. Relatório de agente
+  ≠ estado do repo (verificar git log). Build verde ≠ runtime são: páginas
+  com alterações de render abrem-se em dev antes do push.
+- typecheck + build LOCAIS antes de cada push (Vercel não corre typecheck
+  estrito nos testes; o CI corre).
+- Produção partida: rollback primeiro (Vercel → Deployments → Promote),
+  diagnóstico depois.
 - Mensagens de commit: o quê + porquê, 3-6 linhas. Nunca "alterações X".
+  Antes de git commit, reler esta secção.
 - Diffs mostrados ao utilizador ANTES de commit. Sem scope creep: alterações
   fora do pedido são listadas, não aplicadas.
 - Atualizar este ficheiro no fim de cada bloco de trabalho.
+- Itens desenhados no chat entram na secção PENDENTE no próprio dia; um item
+  só sai quando confirmado no ecrã.
 
 ## Factos técnicos confirmados
-- [Certo] O Freddy devolve TEXTO humano, não JSON — parser em lib/freddy/data-adapter.ts
-  (extração de blocos `raw: {...}` por chavetas balanceadas).
-- [Certo] Unidades: summarizedActivity_elevationGain ÷100; calories kJ→kcal ÷4.184;
-  recoveryTime em SEGUNDOS.
+- [Certo] O Freddy devolve TEXTO humano, não JSON — parser em
+  lib/freddy/data-adapter.ts (blocos `raw: {...}` por chavetas balanceadas).
+- [Certo] Unidades: summarizedActivity_elevationGain ÷100; calories kJ→kcal
+  ÷4.184; recoveryTime em SEGUNDOS.
 - [Certo] Freddy: ~3 pedidos concorrentes máx, 429 acima. Semáforo global em
-  lib/freddy/limiter.ts (MAX_CONCURRENT=2, retry só em 429) é a ÚNICA coordenação.
-- [Certo] Cliente MCP é SINGLETON (lib/freddy/client.ts) — NUNCA chamar close()
-  por chamada (regressão histórica: destruía o singleton, reconexão por pedido).
+  lib/freddy/limiter.ts (MAX_CONCURRENT=2, retry só em 429) é a ÚNICA
+  coordenação de concorrência — sem throttles locais.
+- [Certo] Cliente MCP é SINGLETON (lib/freddy/client.ts) — NUNCA chamar
+  close() por chamada (regressão histórica: destruía o singleton).
 - [Certo] Algumas métricas devolvem vazio por start/end mas dados por days —
   fallback legacy-days no data-adapter. Sentinels só após o fallback.
 - Cache por (métrica, data) em lib/freddy/cache.ts; datas passadas imutáveis;
   CACHE_VERSION invalida tudo (incrementar se o formato parseado mudar).
+- [Certo] Records Strava: cache SEM TTL invalidada por latestId do summary
+  (lib/strava-lab/records-cache.ts) — a paginação de 1000 atividades só corre
+  com atividade nova.
 - [Certo] Localização: cookie browser geo > env WEATHER_* > geo-IP > default.
-  Geo-IP da Vercel resolve para o interior (erro de 16°C confirmado) — nunca
-  promover geo-IP na cadeia. Coach TEM de receber o mesmo geo hint do cookie.
+  Geo-IP da Vercel resolve para o interior (erro de 16°C confirmado). Coach
+  TEM de receber o mesmo geo hint do cookie.
+- [Certo] Wellness — dois "dias": sinais da manhã (sono/HRV/RHR/bateria) de
+  getMorningWellness (registo de hoje = noite passada); carga (CTL/ATL/TSB)
+  de getDecisionWellness (último dia < hoje, convenção PMC). NUNCA aplicar
+  getDecisionWellness a sinais da manhã (regressão histórica de
+  sobrecorreção).
 - [Certo] HRV: fonte única computeHrvDeviation (lib/utils/hrv.ts) — "atual" =
   último dia com hrv não-nulo; baseline = média 30d excluindo esse dia.
-  Dashboard faz UM fetch de wellness partilhado (loadReadinessAndRecovery).
-- [Certo] TSB/CTL/ATL de decisão (card e coach) vêm do ÚLTIMO dia < hoje
-  (getPreviousDayWellness) — convenção PMC + imuniza contra instabilidade do
-  registo de hoje. Causa exata do sintoma "push altera TSB" não confirmada;
-  hipótese de carga planeada no wellness testada duas vezes, negativa.
+  Dashboard faz UM fetch de wellness partilhado.
+- [Certo] NUNCA média aritmética de paces por amostra — pace agregado =
+  distância total / tempo total (média harmónica). Viés confirmado: +15s/km
+  num treino real.
+- [Certo] Monotonia (Foster) calcula-se sobre a CARGA DIÁRIA BRUTA (atlLoad
+  dos raws, zeros incluídos), nunca sobre ATL suavizado (dava 10.40,
+  impossível). [Provável] atlLoad em falta num dia conta como 0 e subestima —
+  vigiar se o valor parecer baixo numa semana pesada.
+- [Certo] Coach — regra de ouro: TODA a aritmética/comparação/interpretação é
+  feita em código; o LLM cita valores pré-formatados (desvio com palavra
+  direcional, pace via secPerKmToMinSec, semanas/fase da prova calculadas em
+  goal-store.ts). Instrução nova entra SEMPRE também no EXEMPLO do system
+  prompt — o Llama imita exemplos, ignora regras.
+- [Certo] Coach — memória: trackDate corre em savePrescription E
+  saveExecution; histórico injetado no FIM do contexto; citação do último
+  treino é FORMATO obrigatório ("📊 Último treino: ..."), não instrução.
+  rawBlock guardado ao lado do parseado (fixture à distância de um GET).
+- [Certo] Coach — modos: prescribe (default) / evaluate (campo "Plano de
+  hoje" OU evento ICU futuro → veredicto ✅/⚠️/🛑, sem bloco ICU) / review
+  (plano + atividade executada hoje → desvios calculados em código).
+  extractPlanFromMessage promove mensagens com padrão de prescrição.
+- [Certo] Coach — filosofia 80/20: NUNCA comparar pace de treino
+  fácil/volume com o pace de maratona (fáceis são propositadamente
+  45-90s/km mais lentos). Comparação é contra o prescrito ou a faixa do
+  TIPO de treino.
+- [Certo] Coach — segunda sessão no mesmo dia: defeito é descanso; hora do
+  treino de hoje entra no contexto; factos ausentes não se afirmam.
+- [Certo] TSB/CTL/ATL de decisão vêm do último dia < hoje. Causa exata do
+  sintoma "push altera TSB" não confirmada; hipótese de carga planeada
+  testada duas vezes, negativa.
 - [Certo] Decoupling só em execução CONTÍNUA (isPaceContinuous, CV<0.15) —
-  em todos os ramos, com ou sem prescrição. Intervalado → null, badge ausente.
-- [Certo] A página Running NÃO tem lista de atividades (removida a pedido).
-  ActivityDetailPanel é alcançável via personal-records-tiles e via
-  last-workout-card (dashboard, abaixo do readiness-hero).
-  [Certo] Sinais da manhã (sono/HRV/RHR/bateria) leem getMorningWellness (registo de hoje = noite passada); carga (CTL/ATL/TSB) lê getDecisionWellness (ontem). NUNCA aplicar getDecisionWellness a sinais da manhã — regressão histórica de sobrecorreção.
-  [Certo] NUNCA média aritmética de paces por amostra — pace agregado = distância total / tempo total (samples 1Hz: média harmónica). Viés confirmado: +15s/km num treino real.
-  - [Certo] Objetivo de prova em coach:goal (Redis, sem TTL) — Maratona de Lisboa
-  2026-10-10, 3:00:00 (4:15/km). Semanas/fase calculadas em código
-  (lib/coach/goal-store.ts), NUNCA pedidas ao modelo. Editar via npm run goal:set.
-- [Certo] Memória do coach: trackDate corre em savePrescription E saveExecution;
-  histórico injetado no FIM do contexto; citação do último treino é FORMATO
-  obrigatório ("📊 Último treino: ..."), não instrução. Convenção: instrução nova
-  ao coach entra sempre também no EXEMPLO do system prompt — o Llama imita
-  exemplos, ignora regras.
-- [Certo] Consistência texto vs bloco ICU: checkIcuConsistency (warning UI +
-  log [coach:consistency], estados consistente/inconsistente/unverifiable).
-  [Provável] Só valida DISTÂNCIAS — treinos 100% por tempo reportam consistente
-  sem verificação real.
-- [Certo] Segunda sessão no mesmo dia: defeito é descanso; hora do treino de
-  hoje entra no contexto; factos ausentes do contexto não se afirmam (regra
-  anti-confabulação no system prompt).
-- [Certo] Desvio de pace: paceDeviationLabel (workout-history.ts) calcula vs o
-  limite mais próximo do range (minSecPerKm se mais rápido, maxSecPerKm se mais
-  lento) e produz "Xs mais rápido/lento que o alvo" ou "dentro do alvo". Campo
-  legado paceVsTargetSecPerKm (vs ponto médio) ignorado no display — era ambíguo
-  (bug: "-23s/km" lido como défice de velocidade). Convenção: aritmética e
-  comparações de pace nunca são do Llama — modelo cita texto pré-formatado.
-  [Certo] Coach linha → ajuste — 3 casos no system prompt: (a) desvio presente
-  nos dados → citar literalmente; (b) treino fácil/volume/recuperação sem alvo
-  ou "treino sem prescrição" → caracterizar pelo TIPO ("pace de volume correto"),
-  NUNCA comparar contra 4:15/km (race pace) — treinos fáceis são 45-90s/km mais
-  lentos por princípio 80/20; (c) "dentro do alvo" → citar. Bug anterior: o Llama
-  comparava 4:59/km vs 4:15 (race pace) e escrevia "44s mais lento que o alvo".
-  Diagnóstico timing Garmin→Freddy: se [coach:history] vazio na 1ª chamada e
-  preenchido na 2ª → timing (esperado, não bug); se presente e ignorado → confabulação (reportar).
+  em todos os ramos. Intervalado → null, badge ausente.
+- [Certo] Interpretações no UI (ramp/monotonia/decoupling/sono): texto por
+  LIMIARES EM CÓDIGO (constantes nomeadas), só visível em atenção/alerta;
+  síntese quando ramp E monotonia ambos ≥atenção. NUNCA texto do LLM.
+- [Certo] Previsão de maratona: Garmin se <14d, senão Riegel sobre records
+  do Freddy (data = corrida real; janela 70d→180d com aviso; filtro de
+  representatividade pace < goal×1.25×0.90; distância mais longa com
+  penalização de antiguidade >45d). checkIcuConsistency valida texto vs
+  bloco ICU (só distâncias — treinos 100% por tempo passam sem verificação
+  real) + steps de distância com pace + não misturar HR/Pace + hasIntervals.
+- [Certo] Fases do sono: estimadas por atigrafia — margem de erro
+  significativa vs polissonografia, sobretudo REM. O rodapé de humildade no
+  card é DELIBERADO (não remover); alertas valorizam tendências (3+ noites).
+  Fases NÃO entram no composto (sleepScore já as pondera — dupla contagem).
+- [Certo] RSC: Server Components NUNCA passam funções como props a Client
+  Components — passar identificador string, resolver no client. O build NÃO
+  apanha; só a página aberta (regressão histórica: sleepHmHtick partiu
+  /dashboard/sleep em produção).
+- [Certo] Dev local com 404 em TODOS os _next/static/* ou "Failed to read
+  source code" de ficheiros existentes = ambiente corrompido (cache .next
+  mista ou processo node pendurado), NÃO bug de código. Protocolo:
+  Get-Process node | Stop-Process -Force → Remove-Item -Recurse -Force
+  .next → Test-Path do ficheiro acusado → npm run dev. Não reverter commits.
+- [Certo] .env.local de teste precisa de STRAVA_LAB_API_KEY para zonas/
+  splits do detalhe; AUTH_BYPASS=1 (só fora de produção) salta o login.
 
-- [Certo] Previsao de maratona (card Rumo ao sub-3h): Garmin se fresco (<14d);
-  Riegel (lib/analysis/race-prediction.ts, T2=T1*(D2/D1)^1.06) sobre melhor
-  esforco Freddy <=70d em HM>10K>5K, caso contrario (180d com aviso no footer).
-  getRacePredictions REESCRITO (2026-07-10): usava parseQueryMetricsText (so
-  le raw:) — race predictions sao escalares sem raw:, logo devolvia {} sempre.
-  Fix: queryRawText + extractValuesByDate. Lag Garmin confirmado: 19 dias.
-  days:30 cobre o lag; check de frescura (<14d) na API route.
-  Riegel usa FreddyDataService.getPersonalRecords(180) (data = data da corrida
-  real, nao PR all-time); strava-lab /records removido do dashboard render.
-  Card e API route: app/api/dashboard/race-goal/route.ts (client-side fetch).
-  CANDIDATES: HM>10K>5K (15K removido — nao coberto pelo Freddy).
-  getCachedPersonalRecords: TTL 24h adicionado aos kv.set.
-  selectRiegelInput REESCRITO (2026-07-11): bug — HM a 5:08/km (treino fácil,
-  69d atrás) vencia sobre 10K a 3:46/km (118d atrás, fora da janela 70d) →
-  previsão 3:45 errada. Fix: filtro de representatividade (pace < goalPace ×
-  1.25 × 0.90; goalPace × 1.25 ≈ Z2 proxy); recolhe TODOS os qualificados por
-  categoria (não sai no 1º match); prefere distância maior mas penaliza
-  antiguidade (se o topo for >45d mais velho que o seguinte, troca). Com o
-  fix: 10K a 3:46 qualifica na janela 180d (stale) → previsão ≈2:53.
-- [Certo] Ramp rate (lib/analysis/training-stress.ts): consumido de wellness.rampRate
-  (Intervals.icu, CTL/sem), NUNCA recalculado. Semáforo: <1.0 ok; 1.0-1.5 atenção;
-  ≥1.5 sustentado 2+ semanas → alerta (verifica weekAgo com Date.UTC para evitar
-  drift de timezone). Monotonia Foster: usa atlLoad (WellnessDay.atlLoad, impulso
-  diário bruto do Intervals.icu, 0 em dias de descanso). Fix (2026-07-11): ATL EWMA
-  direto → variância mínima → monotonia 10+. Inverso EWMA abandonado: fórmula
-  Intervals.icu ≠ EWMA discreto k=7 (rest day dava L=16 em vez de 0). atlLoad
-  disponível nos raws, extraído em getWellnessWeekly. >2.0 atenção, >2.5 alerta;
-  <4 dias L>0 → lowData, sem veredicto. Integrado no card, coach, testes.
-- [Certo] Gráfico de intensidade (getHrZonesWeekly): usa activity_icu_hr_zone_times
-  (Intervals.icu, raw JSON {"zones":[Z0..Z6]}, sem atraso). Substituiu
-  summarizedActivity_hrTimeInZone_* (Garmin) que tinha atraso ~30 dias — causa
-  confirmada do "sem dados desde 15/6". Parser: extractIcuHrZonesByDate (exportado,
-  testado). Formato lido com includeRaw:true; FreddyClient.queryRawText aceita
-  includeRaw na interface.
-  REGRESSÃO CORRIGIDA (2026-07-10): cachedQueryRawText nunca passava include_raw
-  ao callTool — parser devolvia mapa vazio → zero barras. Fix: mcpArgs condicional +
-  "|raw" na chave de cache. Fixture sintética icu-hr-zones.txt derivada de MCP real.
-  Regra: parser para fonte nova só com fixture REAL capturada antes.
-[Certo] Server Components NUNCA passam funções como props a Client Components (RSC: props serializáveis) — passar um identificador string e resolver a função no lado client. O build NÃO apanha; só a página aberta em runtime. Regressão histórica: sleepHmTick como tickFormatter partiu /dashboard/sleep em produção.
-- [Certo] Hipnograma + alertas de fases do sono (2026-07-14): lib/analysis/sleep-phases.ts
-  exporta parseSleepPhaseBlocks (sleepLevelsMap → SleepPhaseBlock[] | null) e
-  computeSleepAlerts (escalares deepSec/remSec/awakeSec → string[]).
-  Limiares: profundo <60min, REM <90min, acordado >45min (3+ noites → alerta).
-  getSleepDetail() em metrics.ts usa mesma query de getSleepSummary mas devolve
-  SleepNightDetail (SleepSummary + startEpochSec + phaseBlocks). SleepHypnogram
-  é Client Component — recebe SleepPhaseBlock[] (serializável do RSC). Alertas em
-  /dashboard/sleep são determinísticos (NUNCA LLM). Em produção: REM alerta
-  confirmado vivo (REM consistentemente <90min nas últimas 8 noites reais).
-[Certo] Dev local com 404 em TODOS os assets (_next/static/*) ou erros
-  "Failed to read source code" de ficheiros que existem = ambiente
-  corrompido (cache .next misto ou processo node pendurado), NÃO bug de
-  código. Protocolo: Get-Process node | Stop-Process -Force →
-  Remove-Item -Recurse -Force .next → Test-Path do ficheiro acusado →
-  npm run dev. Não reverter commits por causa disto.
-  - [Certo] Fases do sono: estimadas por atigrafia — margem de erro
-  significativa vs polissonografia, sobretudo REM. O rodapé de humildade
-  no card é DELIBERADO (não remover); alertas valorizam tendências
-  (3+ noites), nunca noites isoladas. Fases NÃO entram no composto
-  (sleepScore já as pondera — dupla contagem).
+## Limitações de terceiros (documentadas — NÃO investir em workaround)
+- [Certo] ICU→Garmin, multiple targets: misturar HR e Pace no mesmo workout
+  → Garmin apaga todos os targets. Workouts de corrida são pace-only
+  NUMÉRICO ("5:00-5:15/km Pace"); nunca "Zx Pace" (→ null-null se zonas ICU
+  vazias), nunca sufixo HR. Fontes: forum.intervals.icu/t/130238, t/118130.
+- [Certo] ICU→Garmin, repeat blocks (Nx): chegam ao relógio como NOTA de
+  texto (bug do FIT generator do ICU, sem ETA — não injeta intensity nos
+  steps de repeat). Contínuos chegam estruturados. Aviso determinístico na
+  UI quando hasIntervals. Fontes: t/124473, t/130465.
+- [Certo] Kiprun Pace: sem API; ICU↔Garmin unidirecional (ICU→Garmin) —
+  treinos Kiprun invisíveis programaticamente. Integração via campo manual
+  "Plano de hoje".
+- npm audit: 2 moderate = postcss embutido no Next 15, sem exposição real;
+  só sai no Next 16. NUNCA npm audit fix --force (propõe Next 9).
+- [Certo] @emnapi/* são devDeps DIRETAS de propósito (npm em Windows omite
+  optional deps transitivas do lockfile; npm ci em Linux rebenta). Não
+  "limpar".
+
 ## Testes e CI
-- Vitest, 390 testes; CI em .github/workflows/ci.yml (npm ci + typecheck + lint + test).
+- Vitest — contagem: ver o último run do CI (números fixos aqui apodrecem;
+  referência: ~394 em 2026-07-15). CI: npm ci + typecheck + lint + test.
 - Fixtures REAIS em tests/fixtures/ — dados fisiológicos, .gitignore, NUNCA
-  commitar. CI corre contra tests/fixtures-synthetic/ (estrutura real, valores falsos).
-- tools/capture-fixtures.ts recaptura output MCP real (npm run fixtures:capture, local).
-- [Certo] @emnapi/* são devDeps DIRETAS de propósito: npm em Windows omite
-  optional deps transitivas do lockfile e o npm ci em Linux rebenta. Não "limpar".
-- npm audit: 2 moderate = postcss embutido no Next 15 (build-time, sem exposição
-  real); só sai no Next 16. NUNCA npm audit fix --force (propõe downgrade p/ Next 9).
--  [Certo] Cards de carga/decoupling têm linha de interpretação por limiares em código  (training-stress.ts, PrescribedVsExecutedCard) — texto determinístico, NUNCA do LLM. Síntese quando ramp E monotonia ambos ≥atenção. Só visível em atenção/alerta.
+  commitar. CI corre contra tests/fixtures-synthetic/ (estrutura real,
+  valores falsos). tools/capture-fixtures.ts recaptura (local).
 
-- [Certo] Coach evaluate mode (lib/coach/evaluate.ts): quando o contexto tem
-  [PLANO DO DIA], o system prompt é SYSTEM_PROMPT_BASE + SYSTEM_PROMPT_EVALUATE_SUFFIX
-  e o modelo responde com veredicto ✅/⚠️/🛑 (código valida via extractEvaluateVerdict).
-  Prioridade de fontes: campo manual (body.plannedWorkout) > GET ICU events para hoje
-  (getPlannedWorkoutForDate, lib/intervals/client.ts) > nenhum (modo prescribe normal).
-  Plano guardado em Redis via savePrescription em cada evaluate — memória funciona para
-  treinos Kiprun sem ICU push. icuWorkout=null em evaluate mode (sem push button).
-  ICU events fetch corre em paralelo com buildContextSummary para não aumentar latência.
-  [Certo] Kiprun→Garmin→ICU: sync é UNIDIRECIONAL ICU→Garmin. Treinos Kiprun no
-  calendário Garmin NÃO chegam ao ICU automaticamente. FONTE 2 (ICU events) cobre
-  apenas eventos criados por nós (coach push) ou manualmente no ICU. Para treinos
-  Kiprun usar FONTE 1 (campo manual).
+## Dívidas conhecidas
+- Mover ReadinessCardData/RecoveryCardData para lib/types/ e apagar os
+  componentes ReadinessCard/RecoveryCard (mortos; ficheiros sobrevivem só
+  pelos tipos).
+- Composto de readiness: evoluir HRV para média 7d vs baseline 30-60d (uma
+  noite vs média é ruidoso). Iteração, não bug.
+- Split de lib/freddy/metrics.ts (~2000 linhas) em módulos.
+- Evaluate mode: veredicto ⚠️ "Ajusta" não empurra o treino ajustado ao
+  relógio — evolução futura se os ⚠️ forem frequentes na fase específica.
+- checkIcuConsistency só valida distâncias — treinos 100% por tempo reportam
+  consistente sem verificação real.
+- Erro cru de STRAVA_LAB_API_KEY exposto ao cliente numa rota — passar por
+  humanizeError.
 
-## Dúvidas conhecidas
-- Mover ReadinessCardData/RecoveryCardData para lib/types/ e apagar os componentes
-  ReadinessCard/RecoveryCard (mortos desde o readiness-hero; ficheiros sobrevivem
-  só pelos tipos).
-- Composto de readiness: evoluir comparação de HRV para média 7d vs baseline 30-60d
-  (uma noite vs média é ruidoso). Iteração, não bug.
-- Split de lib/freddy/metrics.ts (ainda ~2000 linhas) em módulos.
-[Provável] atlLoad em falta num dia isolado conta como carga 0 e subestima a monotonia — vigiar se o valor parecer baixo demais numa semana pesada.
-[evoluçãp conhecida] Se os "Ajusta" se tornarem frequentes na fase específica, a iteração seguinte é: veredicto ⚠️/🛑 oferece um botão "push do treino ajustado" que substitui o evento.
-- [Certo] ICU↔Garmin sync — limitação de múltiplos targets: o Garmin só
-  aceita UM tipo de target por workout (Pace OU HR, nunca os dois). Misturar
-  — ex: warmup "65% HR" com main set "5:00/km Pace" — resulta em "No targets"
-  em todos os steps no relógio (bug confirmado por moderador ICU, sem ETA de fix;
-  fonte: forum.intervals.icu/t/syncing-pace-hr-targets-to-garmin/130238).
-  Fix: quando o contexto tem pace zones, todos os steps usam Pace (warmup/
-  cooldown/recuperações em pace numérico; sessão em pace numérico ou zona Pace).
-  HR% só quando não há pace zones no contexto. checkIcuConsistency detecta
-  mistura automaticamente (hasMixedMetrics → warning [coach:consistency]).
-- [Certo] ICU↔Garmin sync — blocos de repetição (Nx): workouts com blocos
-  "6x"/"4x" chegam ao Garmin como NOTA DE TEXTO (sem steps executáveis no
-  relógio), não como workout estruturado. Causa: o ICU não injeta campo
-  intensity nos steps dentro de repeat blocks ao gerar o FIT file → Garmin
-  recebe steps sem tipo e regride para nota. Workouts contínuos (Warmup/Main/
-  Cooldown sem Nx) chegam como steps estruturados com pace correto.
-  Bug ICU confirmado, sem ETA de fix; fontes: forum.intervals.icu/t/124473
-  (steps como "Other"), forum.intervals.icu/t/130465 (pace range → notes only).
-  Deteção: parseIcuBlockStats.hasIntervals propagado para ConsistencyResult;
-  route.ts injeta aviso no consistencyWarning quando hasIntervals=true.
-  UI: aviso determinístico ao lado do botão "Enviar para Intervals" — NUNCA
-  via LLM. O pace está sempre no texto do treino — utilizador navega por ele.
+## PENDENTE (itens desenhados, aguardam implementação ou confirmação)
+- (vazio em 2026-07-15 — tudo confirmado no ecrã)
 
 ## Roadmap
-- Feitos: 1 (cache), 2 (limpeza), 3 (testes+CI), 4 (auth), 5+7 (memória do coach
-  prescrito vs executado, decoupling, guardrails, formato 📊 validado em produção),
-  6 (80/20 semanal), 8 (objetivo de prova + card Rumo ao sub-3h), 9 (ramp rate +
-  monotony/strain), card Último Treino, consistência ICU, fixes de
-  localização/AQI/HRV/TSB/pace harmónico, coach evaluate mode (campo Plano de hoje
-  + FONTE 2 ICU events, veredictos ✅/⚠️/🛑, prescrição guardada em Redis).
-- Depois: 10 (modelo p/ prescrição), 11 (encriptar tokens + LICENSE + template OSS),
-  12 (hipnograma, race readiness 12 semanas).
+- Feitos: 1 (cache), 2 (limpeza), 3 (testes+CI), 4 (auth), 5+7 (memória do
+  coach + decoupling + guardrails + formato 📊 validado em produção), 6
+  (80/20 semanal), 8 (objetivo de prova + card Rumo ao sub-3h + Riegel
+  representativo), 9 (ramp/monotony com interpretações), evaluate/review
+  modes, integração Kiprun (campo manual), hipnograma + alertas de sono
+  (2026-07-15), consistência ICU, cards Último Treino, fixes de
+  localização/AQI/HRV/TSB/pace/performance (dashboard 16s→3s).
+- Item 10 (modelo melhor p/ prescrição): ADIADO indefinidamente — os
+  defeitos do Llama foram resolvidos por engenharia (aritmética em código,
+  formatos obrigatórios, exemplos); reavaliar só se o caderno de faltas o
+  justificar.
+- Estado: bloco de construção FECHADO. Próximos eventos são de treino
+  (teste Kiprun 19/07: 30' @ 5:25 + 6' @ 3:30 + 10' @ 5:25; 10K de controlo
+  ~fim de julho; experimento REM: horário de deitar fixo 1 semana). Sessões
+  futuras: fixes do caderno de faltas do utilizador — NÃO propor features
+  novas por iniciativa própria.

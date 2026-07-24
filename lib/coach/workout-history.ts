@@ -1,4 +1,15 @@
 import type { PrescribedWorkout, WorkoutExecution } from "@/lib/types/coach";
+import { MIN_REAL_ACTIVITY_KM } from "@/lib/utils/activity";
+
+/** Pace acima deste valor (min/km) indica atividade fantasma. */
+const MAX_REAL_PACE_MIN_PER_KM = 15;
+
+function isGhostExecution(exec: WorkoutExecution | null): boolean {
+  if (!exec) return false;
+  if (exec.distanceKm < MIN_REAL_ACTIVITY_KM) return true;
+  if (exec.avgPaceMinPerKm !== null && exec.avgPaceMinPerKm > MAX_REAL_PACE_MIN_PER_KM) return true;
+  return false;
+}
 
 export function secPerKmToMinSec(s: number): string {
   const m = Math.floor(s / 60);
@@ -38,6 +49,7 @@ export function formatWorkoutHistory(
   includeInstruction = true,
 ): string {
   const lines = pairs
+    .map((p) => ({ ...p, executed: isGhostExecution(p.executed) ? null : p.executed }))
     .filter((p) => p.prescribed || p.executed)
     .map(({ date, prescribed, executed }) => {
       const parts: string[] = [date];
