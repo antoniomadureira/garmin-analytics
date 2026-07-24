@@ -91,6 +91,27 @@ describe("aggregateIntensity", () => {
     // Z1: 1800+1800=3600; Z2: 3600 → easy = 7200
     expect(result.easySec).toBe(7200);
   });
+
+  it("todo tempo no índice 0 com durationSec — lowVolume false (caso real 21/07)", () => {
+    // Treino 1h33 + 1h09, FC média 131bpm, tudo classificado Z1 pelo ICU.
+    // O ICU armazena este tempo no índice 0 do array raw → totalSec=0 sem o fix.
+    // Com durationSec, weekDurationSec=9720s > 7200s → lowVolume=false.
+    const result = aggregateIntensity([
+      { zoneSeconds: [5580, 0, 0, 0, 0, 0, 0], durationSec: 5580 }, // 1h33
+      { zoneSeconds: [4140, 0, 0, 0, 0, 0, 0], durationSec: 4140 }, // 1h09
+    ]);
+    expect(result.totalSec).toBe(0);   // índice 0 excluído das percentagens
+    expect(result.easyPct).toBeNull(); // sem dados de zona → percentagens nulas
+    expect(result.lowVolume).toBe(false); // 9720s > 7200s
+  });
+
+  it("durationSec ausente → fallback totalSec para lowVolume (retrocompat.)", () => {
+    // Sem durationSec explícito: totalDurationSec=0 → fallback para totalSec
+    const result = aggregateIntensity([
+      { zoneSeconds: [0, 500, 500, 100, 0, 0, 0] }, // totalSec=1100
+    ]);
+    expect(result.lowVolume).toBe(true); // 1100s < 7200s
+  });
 });
 
 // ─── getIntensityStatus ───────────────────────────────────────────────────────

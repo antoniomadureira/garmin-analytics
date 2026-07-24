@@ -1126,13 +1126,16 @@ export class FreddyDataService {
 
     const days = weeks * 7;
     const text = await this.client.queryRawText({
-      metrics: ["activity_icu_hr_zone_times"],
+      metrics: ["activity_icu_hr_zone_times", RunActivityMetrics.durationSec],
       days,
       includeRaw: true,
     });
 
     const icuZonesByDate = extractIcuHrZonesByDate(text);
-    const weekMap = new Map<string, Array<{ zoneSeconds: number[] }>>();
+    // durationSec por data — soma de todas as atividades do dia (inclui Z0, independente da FC)
+    const durValuesByDate = extractValuesByDate(text, RunActivityMetrics.durationSec);
+
+    const weekMap = new Map<string, Array<{ zoneSeconds: number[]; durationSec: number }>>();
 
     for (const [date, zonesArrays] of icuZonesByDate) {
       const monday = getMondayStr(date);
@@ -1141,8 +1144,9 @@ export class FreddyDataService {
       for (const zones of zonesArrays) {
         zones.forEach((s, i) => { zoneSeconds[i] += s; });
       }
+      const durationSec = (durValuesByDate.get(date) ?? []).reduce((s, d) => s + d, 0);
       if (!weekMap.has(monday)) weekMap.set(monday, []);
-      weekMap.get(monday)!.push({ zoneSeconds });
+      weekMap.get(monday)!.push({ zoneSeconds, durationSec });
     }
 
     // Constrói array das últimas N semanas (mais antiga primeiro)

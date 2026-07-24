@@ -29,24 +29,32 @@ export type IntensityStatus = "ok" | "caution" | "alert";
 /**
  * Agrega tempo em zonas HR de várias atividades em 3 baldes.
  * Cada atividade fornece zoneSeconds[0..6] em segundos.
- * Z0 excluído (abaixo de Z1 — aquecimento/transição sem esforço).
+ * Z0 (índice 0) excluído das percentagens — aquecimento/transição abaixo de Z1.
+ *
+ * lowVolume usa durationSec (duração real do treino) em vez de totalSec:
+ * treinos inteiramente em Z1 podem ter todo o tempo no índice 0, o que dava
+ * lowVolume=true com 4h de treino (falso positivo confirmado em 2026-07-24).
  */
 export function aggregateIntensity(
-  activities: Array<{ zoneSeconds: number[] }>,
+  activities: Array<{ zoneSeconds: number[]; durationSec?: number }>,
 ): IntensityBuckets {
   let easySec = 0;
   let moderateSec = 0;
   let strongSec = 0;
+  let totalDurationSec = 0;
 
-  for (const { zoneSeconds } of activities) {
+  for (const { zoneSeconds, durationSec } of activities) {
     easySec += (zoneSeconds[1] ?? 0) + (zoneSeconds[2] ?? 0);
     moderateSec += zoneSeconds[3] ?? 0;
     strongSec +=
       (zoneSeconds[4] ?? 0) + (zoneSeconds[5] ?? 0) + (zoneSeconds[6] ?? 0);
+    totalDurationSec += durationSec ?? 0;
   }
 
   const totalSec = easySec + moderateSec + strongSec;
-  const lowVolume = totalSec < LOW_VOLUME_SECONDS;
+  // lowVolume: usa durationSec quando disponível; fallback para totalSec (testes sem durationSec)
+  const weekDurationSec = totalDurationSec > 0 ? totalDurationSec : totalSec;
+  const lowVolume = weekDurationSec < LOW_VOLUME_SECONDS;
 
   return {
     easySec,
