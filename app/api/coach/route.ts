@@ -233,14 +233,19 @@ export async function POST(req: NextRequest) {
   if (messages.length === 0) {
     return NextResponse.json({ error: "Sem mensagens." }, { status: 400 });
   }
-  let manualPlan: string | null =
-    typeof body?.plannedWorkout === "string" && body.plannedWorkout.trim() ? body.plannedWorkout.trim() : null;
+  let manualPlan: string | null = null;
+  let planSource: "manual-field" | "extracted-from-message" | null = null;
+  if (typeof body?.plannedWorkout === "string" && body.plannedWorkout.trim()) {
+    manualPlan = body.plannedWorkout.trim();
+    planSource = "manual-field";
+  }
   // Auto-detect plan pasted into chat input when the field is empty
   if (!manualPlan) {
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
     const autoDetected = extractPlanFromMessage(lastUserMsg);
     if (autoDetected) {
       manualPlan = autoDetected;
+      planSource = "extracted-from-message";
       console.log("[coach:plan-autodetect]");
     }
   }
@@ -273,6 +278,13 @@ export async function POST(req: NextRequest) {
 
   // Review mode: plan exists AND today's execution already happened
   const reviewMode = plan !== null && todayRuns.length > 0;
+
+  const mode = reviewMode ? "review" : plan !== null ? "evaluate" : "prescribe";
+  const reason = plan === null ? "default-prescribe"
+    : planSource === "manual-field" ? "manual-field"
+    : planSource === "extracted-from-message" ? "extracted-from-message"
+    : "icu-event";
+  console.log(JSON.stringify({ evt: "coach:mode", mode, reason }));
 
   let context = plan
     ? `${contextBase}\n[PLANO DO DIA — FONTE: ${plan.source === "icu" ? `Intervals.icu (${plan.name})` : "campo manual"}]:\n${plan.text}`
@@ -318,6 +330,7 @@ export async function POST(req: NextRequest) {
   const icuMatch = fullReply.match(/---ICU_WORKOUT---([\s\S]*?)---ICU_END---/);
   const icuRaw = icuMatch ? icuMatch[1].trim() : null;
   const reply = fullReply.replace(/---ICU_WORKOUT---[\s\S]*?---ICU_END---/, "").trim();
+  console.log(JSON.stringify({ evt: "coach:icu-block", hasIcuBlock: icuRaw !== null, mode }));
 
   let icuWorkout: { name: string; description: string } | null = null;
   let consistencyWarning: string | null = null;

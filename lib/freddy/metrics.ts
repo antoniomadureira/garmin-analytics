@@ -1564,6 +1564,7 @@ export class FreddyDataService {
         });
       });
     }
+    console.log(JSON.stringify({ evt: "coach:activities", items: out.map((a) => ({ date: a.date, type: a.activityType, name: a.activityName, km: a.distanceKm })) }));
     return out.sort((a, b) => (a.date < b.date ? 1 : -1));
   }
 
