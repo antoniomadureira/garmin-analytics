@@ -6,10 +6,10 @@ export const EASY_CAUTION_THRESHOLD = 60;
 export const LOW_VOLUME_SECONDS = 2 * 3600; // 2 horas
 
 export interface IntensityBuckets {
-  easySec: number;      // Z1 + Z2
-  moderateSec: number;  // Z3
-  strongSec: number;    // Z4 + Z5 + Z6
-  totalSec: number;     // Z1..Z6 (Z0 excluído — abaixo de Z1)
+  easySec: number;      // Z1 + Z2 (índices 0+1 do array ICU)
+  moderateSec: number;  // Z3 (índice 2)
+  strongSec: number;    // Z4 + Z5 + Z6 + Z7 (índices 3-6)
+  totalSec: number;     // Z1..Z7 (soma de todos os índices 0-6)
   easyPct: number | null;
   moderatePct: number | null;
   strongPct: number | null;
@@ -29,11 +29,13 @@ export type IntensityStatus = "ok" | "caution" | "alert";
 /**
  * Agrega tempo em zonas HR de várias atividades em 3 baldes.
  * Cada atividade fornece zoneSeconds[0..6] em segundos.
- * Z0 (índice 0) excluído das percentagens — aquecimento/transição abaixo de Z1.
  *
- * lowVolume usa durationSec (duração real do treino) em vez de totalSec:
- * treinos inteiramente em Z1 podem ter todo o tempo no índice 0, o que dava
- * lowVolume=true com 4h de treino (falso positivo confirmado em 2026-07-24).
+ * [Certo] O array ICU é 0-indexado: zones[0]=Z1, zones[1]=Z2, …, zones[6]=Z7.
+ * Não existe "Z0 abaixo de Z1" — o índice 0 É Z1. Confirmado nos dados reais
+ * de 21-22/07/2026: 4955+4081s de corrida Z1 estavam no índice 0.
+ *
+ * durationSec é usado apenas para lowVolume (segurança quando as zonas não
+ * somam a totalidade da duração — ex: dropouts de GPS).
  */
 export function aggregateIntensity(
   activities: Array<{ zoneSeconds: number[]; durationSec?: number }>,
@@ -44,15 +46,16 @@ export function aggregateIntensity(
   let totalDurationSec = 0;
 
   for (const { zoneSeconds, durationSec } of activities) {
-    easySec += (zoneSeconds[1] ?? 0) + (zoneSeconds[2] ?? 0);
-    moderateSec += zoneSeconds[3] ?? 0;
+    easySec += (zoneSeconds[0] ?? 0) + (zoneSeconds[1] ?? 0);   // Z1 + Z2
+    moderateSec += zoneSeconds[2] ?? 0;                           // Z3
     strongSec +=
-      (zoneSeconds[4] ?? 0) + (zoneSeconds[5] ?? 0) + (zoneSeconds[6] ?? 0);
+      (zoneSeconds[3] ?? 0) + (zoneSeconds[4] ?? 0) +
+      (zoneSeconds[5] ?? 0) + (zoneSeconds[6] ?? 0);             // Z4-Z7
     totalDurationSec += durationSec ?? 0;
   }
 
   const totalSec = easySec + moderateSec + strongSec;
-  // lowVolume: usa durationSec quando disponível; fallback para totalSec (testes sem durationSec)
+  // lowVolume: usa durationSec quando disponível; fallback para totalSec
   const weekDurationSec = totalDurationSec > 0 ? totalDurationSec : totalSec;
   const lowVolume = weekDurationSec < LOW_VOLUME_SECONDS;
 

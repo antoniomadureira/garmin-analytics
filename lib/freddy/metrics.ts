@@ -1104,7 +1104,7 @@ export class FreddyDataService {
    * [Certo] Fonte: activity_icu_hr_zone_times (Intervals.icu, raw JSON, sem atraso).
    * Substitui summarizedActivity_hrTimeInZone_* que tinha atraso ~30 dias confirmado
    * — causa de "sem dados desde 15/6" diagnosticada em 2026-07-10.
-   * Z0 excluído da agregação (abaixo de Z1 — aquecimento/transição).
+   * [Certo] Array ICU é 0-indexado: zones[0]=Z1, zones[1]=Z2, …, zones[6]=Z7.
    */
   async getHrZonesWeekly(weeks = 8): Promise<WeeklyIntensityData[]> {
     if (!this.client.queryRawText) {
@@ -2005,7 +2005,7 @@ export function extractFirstTimeByDate(text: string): Map<string, string> {
 
 /**
  * Extrai arrays de zonas HR (activity_icu_hr_zone_times) por data.
- * Formato raw: {"zones":[Z0,Z1,Z2,Z3,Z4,Z5,Z6]} em segundos.
+ * Formato raw: {"zones":[Z1,Z2,Z3,Z4,Z5,Z6,Z7]} em segundos (0-indexado: zones[0]=Z1).
  * Suporta múltiplas atividades por dia (lista de arrays).
  */
 export function extractIcuHrZonesByDate(text: string): Map<string, number[][]> {

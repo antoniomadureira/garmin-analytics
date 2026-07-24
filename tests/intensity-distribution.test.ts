@@ -8,28 +8,30 @@ import {
 } from "@/lib/analysis/intensity-distribution";
 
 // ─── aggregateIntensity ───────────────────────────────────────────────────────
+// [Certo] O array ICU é 0-indexado: zones[0]=Z1, zones[1]=Z2, zones[2]=Z3,
+// zones[3..6]=Z4..Z7. Confirmado nos dados reais de 21-22/07/2026.
 
 describe("aggregateIntensity", () => {
   it("semana polarizada — ~85% fácil, lowVolume false", () => {
-    // Z0=0, Z1=4000, Z2=4000, Z3=900, Z4=400, Z5=100, Z6=0 → total=9400
+    // Z1=4000, Z2=4000, Z3=900, Z4=400, Z5=100, Z6=0, Z7=0 → total=9400
     const result = aggregateIntensity([
-      { zoneSeconds: [0, 4000, 4000, 900, 400, 100, 0] },
+      { zoneSeconds: [4000, 4000, 900, 400, 100, 0, 0] },
     ]);
-    expect(result.easySec).toBe(8000);
-    expect(result.moderateSec).toBe(900);
-    expect(result.strongSec).toBe(500);
+    expect(result.easySec).toBe(8000);     // Z1+Z2
+    expect(result.moderateSec).toBe(900);  // Z3
+    expect(result.strongSec).toBe(500);    // Z4+Z5
     expect(result.totalSec).toBe(9400);
     expect(result.easyPct).toBeCloseTo(85.1, 0);
     expect(result.lowVolume).toBe(false); // 9400s > 7200s
   });
 
-  it("semana cinzenta — ~60-75% fácil (duas atividades)", () => {
+  it("semana cinzenta — ~60% fácil (duas atividades)", () => {
     // Atividade 1: Z1=1000, Z2=1000, Z3=1500, Z4=400
     // Atividade 2: Z1=1000, Z2=1000, Z3=500, Z4=100
     // easy=4000, moderate=2000, strong=500, total=6500 → 61.5% fácil
     const result = aggregateIntensity([
-      { zoneSeconds: [0, 1000, 1000, 1500, 400, 0, 0] },
-      { zoneSeconds: [0, 1000, 1000, 500, 100, 0, 0] },
+      { zoneSeconds: [1000, 1000, 1500, 400, 0, 0, 0] },
+      { zoneSeconds: [1000, 1000, 500, 100, 0, 0, 0] },
     ]);
     expect(result.easySec).toBe(4000);
     expect(result.moderateSec).toBe(2000);
@@ -51,66 +53,80 @@ describe("aggregateIntensity", () => {
   it("semana com dados insuficientes → lowVolume true", () => {
     // 1100s < LOW_VOLUME_SECONDS (7200s)
     const result = aggregateIntensity([
-      { zoneSeconds: [0, 500, 500, 100, 0, 0, 0] },
+      { zoneSeconds: [500, 500, 100, 0, 0, 0, 0] },
     ]);
     expect(result.lowVolume).toBe(true);
   });
 
-  it("Z0 é excluído do total", () => {
-    // Mesmo Z0 gigante, não deve contar
+  it("índice 0 é Z1 (fácil) — incluído em easySec", () => {
+    // [Certo] zones[0]=Z1: confirmar que não é excluído
     const result = aggregateIntensity([
-      { zoneSeconds: [99999, 4000, 4000, 900, 400, 100, 0] },
+      { zoneSeconds: [3600, 0, 0, 0, 0, 0, 0] }, // só Z1
     ]);
-    expect(result.totalSec).toBe(9400); // sem Z0
-    expect(result.easySec).toBe(8000);
+    expect(result.easySec).toBe(3600);
+    expect(result.totalSec).toBe(3600);
+    expect(result.easyPct).toBe(100);
+    expect(result.lowVolume).toBe(true); // 3600s < 7200s, sem durationSec → fallback totalSec
   });
 
   it("percentagens somam ~100%", () => {
     const result = aggregateIntensity([
-      { zoneSeconds: [0, 3600, 3600, 1800, 900, 300, 0] },
+      { zoneSeconds: [3600, 3600, 1800, 900, 300, 0, 0] },
     ]);
     const total = (result.easyPct ?? 0) + (result.moderatePct ?? 0) + (result.strongPct ?? 0);
     expect(total).toBeCloseTo(100, 0);
   });
 
-  it("Z4+Z5+Z6 todos contribuem para strongSec", () => {
+  it("Z4+Z5+Z6+Z7 todos contribuem para strongSec (índices 3-6)", () => {
     const result = aggregateIntensity([
-      { zoneSeconds: [0, 0, 0, 0, 600, 300, 100] },
+      { zoneSeconds: [0, 0, 0, 600, 300, 100, 50] },
     ]);
-    expect(result.strongSec).toBe(1000);
+    expect(result.strongSec).toBe(1050);
     expect(result.easySec).toBe(0);
     expect(result.moderateSec).toBe(0);
   });
 
   it("array de atividades — soma correcta entre atividades", () => {
     const result = aggregateIntensity([
-      { zoneSeconds: [0, 1800, 0, 0, 0, 0, 0] },
-      { zoneSeconds: [0, 1800, 0, 0, 0, 0, 0] },
-      { zoneSeconds: [0, 0, 3600, 0, 0, 0, 0] },
+      { zoneSeconds: [1800, 0, 0, 0, 0, 0, 0] }, // Z1
+      { zoneSeconds: [1800, 0, 0, 0, 0, 0, 0] }, // Z1
+      { zoneSeconds: [0, 3600, 0, 0, 0, 0, 0] }, // Z2
     ]);
     // Z1: 1800+1800=3600; Z2: 3600 → easy = 7200
     expect(result.easySec).toBe(7200);
   });
 
-  it("todo tempo no índice 0 com durationSec — lowVolume false (caso real 21/07)", () => {
-    // Treino 1h33 + 1h09, FC média 131bpm, tudo classificado Z1 pelo ICU.
-    // O ICU armazena este tempo no índice 0 do array raw → totalSec=0 sem o fix.
-    // Com durationSec, weekDurationSec=9720s > 7200s → lowVolume=false.
+  it("caso real 21-22/07/2026 — >90% fácil (regressão do mapeamento ICU)", () => {
+    // Dados reais do Freddy confirmados 2026-07-24:
+    // 22/07: {"zones":[4081,39,0,0,0,0,0]} — 1h09 a 100% Z1
+    // 21/07: {"zones":[4955,187,57,96,237,47,0]} — 1h33, maioria Z1
     const result = aggregateIntensity([
-      { zoneSeconds: [5580, 0, 0, 0, 0, 0, 0], durationSec: 5580 }, // 1h33
-      { zoneSeconds: [4140, 0, 0, 0, 0, 0, 0], durationSec: 4140 }, // 1h09
+      { zoneSeconds: [4081, 39, 0, 0, 0, 0, 0], durationSec: 4120 },
+      { zoneSeconds: [4955, 187, 57, 96, 237, 47, 0], durationSec: 5579 },
     ]);
-    expect(result.totalSec).toBe(0);   // índice 0 excluído das percentagens
-    expect(result.easyPct).toBeNull(); // sem dados de zona → percentagens nulas
-    expect(result.lowVolume).toBe(false); // 9720s > 7200s
+    expect(result.easySec).toBe(4081 + 39 + 4955 + 187);  // 9262
+    expect(result.moderateSec).toBe(57);
+    expect(result.strongSec).toBe(96 + 237 + 47);          // 380
+    expect(result.totalSec).toBe(9699);
+    expect(result.easyPct).toBeGreaterThan(90); // >90% fácil
+    expect(result.lowVolume).toBe(false);
   });
 
   it("durationSec ausente → fallback totalSec para lowVolume (retrocompat.)", () => {
-    // Sem durationSec explícito: totalDurationSec=0 → fallback para totalSec
+    // Sem durationSec: totalDurationSec=0 → fallback para totalSec
     const result = aggregateIntensity([
-      { zoneSeconds: [0, 500, 500, 100, 0, 0, 0] }, // totalSec=1100
+      { zoneSeconds: [500, 500, 100, 0, 0, 0, 0] }, // totalSec=1100
     ]);
     expect(result.lowVolume).toBe(true); // 1100s < 7200s
+  });
+
+  it("durationSec > totalSec (GPS dropout) → lowVolume usa durationSec", () => {
+    // Treino com 3h de duração mas apenas 90min de dados de zona (GPS dropout)
+    const result = aggregateIntensity([
+      { zoneSeconds: [3600, 1800, 0, 0, 0, 0, 0], durationSec: 10800 }, // 3h real
+    ]);
+    expect(result.totalSec).toBe(5400);    // 90min em zona
+    expect(result.lowVolume).toBe(false);  // durationSec=10800 > 7200
   });
 });
 
